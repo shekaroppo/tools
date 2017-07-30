@@ -25,7 +25,6 @@ def get_table(*fields):
 
 def show_mutual_fund(parsed_args):
     fields = ["id", "folio", "name", "nav"]
-    print parsed_args.url
     if parsed_args.url:
         fields.append("url")
     table, empty_row = get_table(*fields)
@@ -100,7 +99,6 @@ def show_mutual_fund_status(parsed_args):
     total_weighted_average_days = total_weighted_sum_x_average / total_amount_invested
     total_appreciation = round(
             ((total_current_value-total_amount_invested)*100.0)/total_amount_invested, 2)
-    print total_appreciation, total_weighted_average_days
     yearly_return = (round((1.0 + (total_appreciation/100.0))**(365.0 / total_weighted_average_days), 4) - 1.0)*100
     table.add_row(["", "Total", "", 
                    total_weighted_average_days,
@@ -135,7 +133,6 @@ def update_latest_nav(parsed_args):
         thread.join()
 
     for query in queries:
-        print query[0]
         for q in query[1]:
             CURSOR.execute(q)
     CONN.commit()
