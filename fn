@@ -68,7 +68,7 @@ def show_mutual_fund_status(parsed_args):
     total_current_value = 0 
     purchases = collections.defaultdict(list)
     for row in CURSOR.execute(
-        "select mutual_fund.name, nav.nav, mutual_fund_purchase.amount, mutual_fund_purchase.units, mutual_fund_purchase.time from "
+        "select distinct mutual_fund.name, nav.nav, mutual_fund_purchase.amount, mutual_fund_purchase.units, mutual_fund_purchase.time from "
         "mutual_fund_purchase join mutual_fund join nav "
         "where mutual_fund_purchase.id=mutual_fund.id and nav.mutual_fund_id=mutual_fund.id and date(nav.date)=\"%s\"" % date):
         date_delta = ( date_obj -
@@ -111,7 +111,7 @@ def update_latest_nav(parsed_args):
     date_str = str(datetime.date.today())
     queries.append(
             ( "Deleting current NAV for date %s" % date_str,
-              ["delete from nav where date=%s" % date_str ]))
+              ["delete from nav where date(date)='%s'" % date_str ]))
 
     def fetch_url(row):
         rsp = requests.get(row[2])
@@ -133,6 +133,7 @@ def update_latest_nav(parsed_args):
         thread.join()
 
     for query in queries:
+        print query[0]
         for q in query[1]:
             CURSOR.execute(q)
     CONN.commit()
