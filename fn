@@ -24,8 +24,12 @@ def get_table(*fields):
     return pretty_table, empty_row
 
 def show_mutual_fund(parsed_args):
-    table, empty_row = get_table("Id", "Folio", "Name", "Latest NAV", "Url")
-    for row in CURSOR.execute("select id, folio, name, nav, url from mutual_fund"):
+    fields = ["id", "folio", "name", "nav"]
+    print parsed_args.url
+    if parsed_args.url:
+        fields.append("url")
+    table, empty_row = get_table(*fields)
+    for row in CURSOR.execute("select %s from mutual_fund" % ",".join(fields)):
         table.add_row(list(row))
     print table
 
@@ -137,7 +141,7 @@ def update_latest_nav(parsed_args):
     CONN.commit()
 
 def insert_mf_purchase(parsed_args):
-    units = parsed_args.amount / parsed_args.nav
+    units = round(parsed_args.amount / parsed_args.nav, 3)
     query = (
         "insert into mutual_fund_purchase(id, units, nav, amount, time) "
         "values(%s, %s, %s, %s, \"%s\")" % 
@@ -201,7 +205,8 @@ def main():
 
     smf = subparsers.add_parser('smf')
     smf.set_defaults(subcommand='smf')
-    
+    smf.add_argument("--url", action='store_true')
+
     smfp = subparsers.add_parser('smfp')
     smfp.set_defaults(subcommand='smfp')
 
