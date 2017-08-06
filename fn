@@ -19,6 +19,69 @@ mfDb = os.getenv("MFDB")
 CONN = sqlite3.connect(mfDb)
 CURSOR = CONN.cursor()
 
+TOOL_VERSION = 2
+
+AMFI_MF_IDS = {
+    'ABN  AMRO': '39',
+    'AEGON': '50',
+    'Alliance Capital': '1',
+    'Axis': '53',
+    'Baroda Pioneer': '4',
+    'Benchmark': '36',
+    'Birla Sun Life': '3',
+    'BNP Paribas': '59',
+    'BOI AXA': '46',
+    'Canara Robeco': '32',
+    'Daiwa': '60',
+    'DBS Chola': '31',
+    'Deutsche': '38',
+    'DHFL Pramerica': '58',
+    'DSP BlackRock': '6',
+    'Edelweiss': '47',
+    'Escorts': '13',
+    'Fidelity': '40',
+    'Fortis': '51',
+    'Franklin Templeton': '27',
+    'GIC': '8',
+    'Goldman Sachs': '49',
+    'HDFC': '9',
+    'HSBC': '37',
+    'ICICI Prudential': '20',
+    'IDBI': '57',
+    'IDFC': '48',
+    'IIFL': '62',
+    'Indiabulls': '63',
+    'ING': '14',
+    'Invesco': '42',
+    'JM Financial': '16',
+    'JPMorgan': '43',
+    'Kotak': '17',
+    'L&T': '56',
+    'LIC': '18',
+    'Mahindra': '69',
+    'Mirae Asset': '45',
+    'Morgan Stanley': '19',
+    'Motilal Oswal': '55',
+    'Peerless': '54',
+    'PineBridge': '44',
+    'PNB': '34',
+    'PPFAS': '64',
+    'PRINCIPAL': '10',
+    'Quantum': '41',
+    'Reliance': '21',
+    'Sahara': '35',
+    'SBI': '22',
+    'Shinsei': '52',
+    'Shriram': '67',
+    'Standard Chartered': '2',
+    'Sundaram': '33',
+    'Tata': '25',
+    'Taurus': '26',
+    'Union': '61',
+    'UTI': '28',
+    'Zurich India': '29',
+}
+
 
 def get_table(*fields):
     pretty_table = PrettyTable(list(fields))
@@ -79,6 +142,7 @@ def show_mutual_fund_status(parsed_args):
         date = str(datetime.date.today())
         date_obj = datetime.date.today()
     else:
+        raise Exception("This option is not supported yet")
         date = parsed_args.date
         date_obj = datetime.datetime.strptime(date, "%Y-%m-%d").date()
 
@@ -86,9 +150,12 @@ def show_mutual_fund_status(parsed_args):
     total_weighted_sum_x_average = 0
     total_current_value = 0
     purchases = collections.defaultdict(list)
-    query = "select distinct mutual_fund.name, mutual_fund.type, nav.nav, mutual_fund_purchase.amount, mutual_fund_purchase.units, mutual_fund_purchase.time from " \
-            "mutual_fund_purchase join mutual_fund join nav " \
-            "where mutual_fund_purchase.id=mutual_fund.id and nav.mutual_fund_id=mutual_fund.id and date(nav.date)=\"%s\"" % date
+    query = ( "select mutual_fund.name, mutual_fund.type, mutual_fund.id, "
+                    " mutual_fund_purchase.amount, "
+                    " mutual_fund_purchase.units, "
+                    " mutual_fund_purchase.time from "
+              "mutual_fund_purchase join mutual_fund "
+              "where mutual_fund_purchase.id=mutual_fund.id " )
 
     query = query_filter_list(
         query, "mutual_fund.type", True, parsed_args.type)
@@ -98,22 +165,22 @@ def show_mutual_fund_status(parsed_args):
     query = query_filter_list(query, "mutual_fund.id",
                               False, parsed_args.exclude_id)
 
+    latest_nav_dict = get_latest_nav(parsed_args)
+
     for row in CURSOR.execute(query):
         date_delta = (
             date_obj -
             datetime.datetime.strptime(
                 row[5],
                 "%Y-%m-%d").date()).days
+        nav = latest_nav_dict[row[2]]
         purchases[row[0]].append({
             'type': row[1],
-            'nav': row[2],
+            'nav': nav,
             'amount': row[3],
             'units': row[4],
             'delta': date_delta
         })
-
-    if not purchases:
-        assert purchases, "NAV table doesn't have entry for date specified"
 
     for name, info in purchases.items():
         weighted_sum_x_average = sum([x['amount'] * x['delta'] for x in info])
@@ -207,6 +274,102 @@ def update_latest_nav(parsed_args):
     CONN.commit()
 
 
+def fetch_data_from_amfi():
+    latest_nav = { }
+    urls_to_fetch = set()
+    for row in CURSOR.execute("select name from mutual_fund"):
+        name = row[0]
+        matching_mfs = [ x for x in AMFI_MF_IDS if x in name ]
+        urls_to_fetch |= set([get_amf_url(AMFI_MF_IDS[x]) for x in matching_mfs])
+
+    url_data = [ ]
+
+    def fetch_url(url):
+        rsp = requests.get(url)
+        url_data.append(rsp.text)
+
+    threads = [
+        threading.Thread(
+            target=fetch_url,
+            args=(
+                url,
+            )) for url in urls_to_fetch ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    all_data = '\n'.join(url_data)
+    return all_data
+
+
+def dump_amfi_data_for_debug(parsed_args):
+    print fetch_data_from_amfi()
+
+
+def get_latest_nav(parsed_args):
+    if hasattr(parsed_args, 'moneycontrol') and parsed_args.moneycontrol:
+        return get_latest_nav_from_moneycontrol()
+    else:
+        return get_latest_nav_from_amfi()
+
+
+def get_latest_nav_from_amfi():
+    all_data = fetch_data_from_amfi()
+    lines = [x for x in all_data.split("\n") if x]
+    scheme_code_to_nav = { }
+    scheme_code_to_last_date = { }
+    for line in lines:
+        fields = line.split(";")
+        # 123651;ICICI Prudential Global Stable Equity Fund - Growth;13.35;12.95;13.35;14-Aug-2017
+        if len(fields) != 6:
+            continue
+        # We assume that data will be sorted, so the last one updated will be
+        # the last dates value
+        scheme_code_to_nav[fields[0]] = fields[2]
+        scheme_code_to_last_date[fields[0]] = fields[5].strip()
+
+    mf_id_to_nav = { }
+    for row in CURSOR.execute("select id, scheme_code, name from mutual_fund"):
+        mf_id = row[0]
+        scheme_code = row[1]
+        name = row[2]
+        if scheme_code not in scheme_code_to_nav:
+            raise Exception("Scheme code not available for %s" % name)
+        print "Using NAV of date %s for %s" % (
+                scheme_code_to_last_date[scheme_code], name)
+        mf_id_to_nav[mf_id] = float(scheme_code_to_nav[scheme_code])
+    return mf_id_to_nav
+
+
+def get_latest_nav_from_moneycontrol():
+    mf_id_to_nav = { }
+
+    def fetch_url(mf_id, url, name):
+        rsp = requests.get(url)
+        m = re.search(r'class="bd30tp">(\d+\.\d+)</span>', rsp.text)
+        assert m
+        latest_nav = m.group(1)
+        m = re.search(r'NAV as on (\d+ \w+, \d+)', rsp.text)
+        assert m
+        date = m.group(1)
+        print "Using NAV of date %s for %s" % ( date, name)
+        mf_id_to_nav[mf_id] = float(latest_nav)
+
+    threads = [
+        threading.Thread(
+            target=fetch_url,
+            args=(
+                row[0], row[1], row[2]
+            )) for row in CURSOR.execute("select id, url, name from mutual_fund")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    return mf_id_to_nav
+
+
 def insert_mf_purchase(parsed_args):
     units = round(parsed_args.amount / parsed_args.nav, 3)
     query = ("insert into mutual_fund_purchase(id, units, nav, amount, time) "
@@ -264,6 +427,36 @@ def show_nav(parsed_args):
     print table
 
 
+def datetime_to_amf_date(date):
+    day = date.strftime("%d")
+    month = date.strftime("%B")[:3]
+    year = date.strftime("%Y")
+    return "%s-%s-%s" % (day, month, year)
+
+
+def amf_date_to_datetime(date_str):
+    return datetime.strptime(date_str, '%d-%b-%Y')
+
+
+def get_amf_url(mf_id, from_date=None, to_date=None):
+    url_template = ( "http://portal.amfiindia.com/"
+                     "DownloadNAVHistoryReport_Po.aspx?"
+                     "mf=%s&tp=1&frmdt=%s&todt=%s" )
+    if not from_date:
+        date1 = datetime.date.today() - datetime.timedelta(days=7)
+        from_date = datetime_to_amf_date(date1)
+    if not to_date:
+        to_date = datetime_to_amf_date(datetime.date.today())
+    return url_template % (mf_id, from_date, to_date)
+
+
+def print_amf_url(parsed_args):
+    for mf_name, mf_id in AMFI_MF_IDS.items():
+        print mf_name
+        print get_amf_url(mf_id, parsed_args.from_date, parsed_args.to_date)
+        print ""
+
+
 FUNCTION_MAP = {
     'smf': show_mutual_fund,
     'smfp': show_mutual_fund_purchase,
@@ -273,12 +466,58 @@ FUNCTION_MAP = {
     'ifd': insert_fixed_deposit,
     'sfd': show_fixed_deposit,
     'snav': show_nav,
+    'pamfurl': print_amf_url,
+    'dumpmfdata': dump_amfi_data_for_debug,
 }
+
+
+def migrate_db_to_next_version(current_version):
+    if current_version == 1:
+        # 1) nav table was dropped. instead query from http://portal.amfiindia.com
+        #    for history.
+        # 2) add a new column scheme code in mutual_fund table
+        CURSOR.execute("drop table if exists nav")
+        try:
+            CURSOR.execute(
+                "alter table mutual_fund add column scheme_code TEXT")
+        except sqlite3.OperationalError as e:
+            if 'duplicate column name' not in str(e):
+                raise
+        CURSOR.execute("drop table if exists tool_info")
+        CURSOR.execute("create table tool_info(key TEXT, value TEXT)")
+        CURSOR.execute("insert into tool_info values( 'db_version', 1 )")
+        url = "https://www.amfiindia.com/spages/NAVOpen.txt"
+        print "This version of DB is adding scheme code to mutual funds."
+        print "Open %s for getting scheme codes and fill in DB." % url
+    else:
+        msg = "No known migration handler to version=%s" % (
+            current_version + 1)
+        assert False, msg
+    print "DB migrated to version %s" % (current_version + 1)
+    CURSOR.execute("update tool_info set value=%s where key='db_version'" %
+                   (current_version + 1))
+    CONN.commit()
+
+
+def check_db_version():
+    try:
+        row = CURSOR.execute(
+            "select value from tool_info where key='db_version'")
+        db_version = int(list(row)[0][0])
+    except (sqlite3.OperationalError, IndexError) as e:
+        # db_version was introduced in tool_version 2. So if table
+        # doesn't exist, then assume it is version 1.
+        db_version = 1
+
+    for version in range(db_version, TOOL_VERSION):
+        migrate_db_to_next_version(version)
 
 
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='subcommands')
+
+    check_db_version()
 
     smf = subparsers.add_parser('smf')
     smf.set_defaults(subcommand='smf')
@@ -313,6 +552,7 @@ def main():
                       dest='date', help="as on date")
     smfs.add_argument(
         '--sort', choices=["appr", "amt", "name", "type"], default="appr")
+    smfs.add_argument('--moneycontrol', action="store_true")
 
     imfp = subparsers.add_parser('imfp')
     imfp.set_defaults(subcommand='imfp')
@@ -320,6 +560,9 @@ def main():
     imfp.add_argument('nav', type=float)
     imfp.add_argument('amount', type=int)
     imfp.add_argument('date', type=str)
+
+    dumpmfdata = subparsers.add_parser('dumpmfdata')
+    dumpmfdata.set_defaults(subcommand='dumpmfdata')
 
     uln = subparsers.add_parser('uln')
     uln.set_defaults(subcommand='uln')
@@ -336,6 +579,11 @@ def main():
 
     snav = subparsers.add_parser('snav')
     snav.set_defaults(subcommand='snav')
+
+    pamfurl = subparsers.add_parser('pamfurl')
+    pamfurl.set_defaults(subcommand='pamfurl')
+    pamfurl.add_argument('--from_date')
+    pamfurl.add_argument('--to_date')
 
     sfd = subparsers.add_parser('sfd')
     sfd.set_defaults(subcommand='sfd')
