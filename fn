@@ -13,9 +13,10 @@ import threading
 import collections
 from prettytable import PrettyTable
 
-GOOGLE_DRIVE = os.getenv("GOOGLE_DRIVE")
-DB = "%s/ramesh/financials/mydata.db" % GOOGLE_DRIVE
-CONN = sqlite3.connect(DB)
+assert "MFDB" in os.environ, "Do export MFDB=<path-to-mf-database>"
+mfDb = os.getenv("MFDB")
+
+CONN = sqlite3.connect(mfDb)
 CURSOR = CONN.cursor()
 
 
@@ -26,7 +27,7 @@ def get_table(*fields):
 
 
 def show_mutual_fund(parsed_args):
-    fields = ["id", "folio", "name", "nav"]
+    fields = ["id", "folio", "name", "type", "nav"]
     if parsed_args.url:
         fields.append("url")
     table, empty_row = get_table(*fields)
@@ -35,31 +36,44 @@ def show_mutual_fund(parsed_args):
     print table
 
 
+def query_filter_list(query, field_name, member, args):
+    if args:
+        newArgs = ['"' + x + '"' for x in args]
+        check = "in" if member else "not in"
+        query += " and %s %s (%s)" % (field_name, check, ','.join(newArgs))
+    return query
+
+
+def query_filter_value(query, field_name, oper, arg):
+    if arg:
+        query += " and %s%s\"%s\"" % (field_name, oper, arg)
+    return query
+
+
 def show_mutual_fund_purchase(parsed_args):
     table, empty_row = get_table(
-        "Index", "Name", "Amount", "Time", "Units", "Purchase NAV")
-    for idx, row in enumerate(CURSOR.execute(
-            "select mutual_fund.name, amount, time, units, mutual_fund_purchase.nav "
-            "from mutual_fund_purchase join mutual_fund "
-            "where mutual_fund_purchase.id=mutual_fund.id order by time")):
+        "Index", "Name", "Type", "Amount", "Time", "Units", "Purchase NAV")
+    query = "select mutual_fund.name, mutual_fund.type, amount, time, units, mutual_fund_purchase.nav " \
+            "from mutual_fund_purchase join mutual_fund ""where mutual_fund_purchase.id=mutual_fund.id"
+    query = query_filter_list(
+        query, "mutual_fund.type", True, parsed_args.type)
+    query = query_filter_list(
+        query, "mutual_fund.type", False, parsed_args.exclude_type)
+    query = query_filter_list(query, "mutual_fund.id", True, parsed_args.id)
+    query = query_filter_list(query, "mutual_fund.id",
+                              False, parsed_args.exclude_id)
+    query = query_filter_value(query, "time", "<=", parsed_args.date)
+    query += " order by time"
+    for idx, row in enumerate(CURSOR.execute(query)):
         table.add_row([idx + 1] + list(row))
     print table
 
 
 def show_mutual_fund_status(parsed_args):
-    table, empty_row = get_table(
-        "Index",
-        "Name",
-        "Ltst NAV",
-        "Avg Days",
-        "Amount",
-        "Units",
-        "Crnt val",
-        "Appr",
-        "Pj Yrly Ret",
-    )
+    table, empty_row = get_table("Index", "Name", "Type", "Ltst NAV",
+                                 "Avg Days", "Amount", "Units", "Crnt val", "Appr", "Pj Yrly Ret", )
     rows = []
-    sort_field = {"appr": 6, "amt": 5, "name": 0}
+    sort_field = {"appr": 7, "amt": 6, "name": 0, "type": 1}
     field = parsed_args.sort
     if not parsed_args.date:
         date = str(datetime.date.today())
@@ -67,27 +81,46 @@ def show_mutual_fund_status(parsed_args):
     else:
         date = parsed_args.date
         date_obj = datetime.datetime.strptime(date, "%Y-%m-%d").date()
+
     total_amount_invested = 0
     total_weighted_sum_x_average = 0
     total_current_value = 0
     purchases = collections.defaultdict(list)
-    for row in CURSOR.execute(
-        "select distinct mutual_fund.name, nav.nav, mutual_fund_purchase.amount, mutual_fund_purchase.units, mutual_fund_purchase.time from "
-        "mutual_fund_purchase join mutual_fund join nav "
-            "where mutual_fund_purchase.id=mutual_fund.id and nav.mutual_fund_id=mutual_fund.id and date(nav.date)=\"%s\"" % date):
-        date_delta = (date_obj -
-                      datetime.datetime.strptime(row[4], "%Y-%m-%d").date()).days
+    query = "select distinct mutual_fund.name, mutual_fund.type, nav.nav, mutual_fund_purchase.amount, mutual_fund_purchase.units, mutual_fund_purchase.time from " \
+            "mutual_fund_purchase join mutual_fund join nav " \
+            "where mutual_fund_purchase.id=mutual_fund.id and nav.mutual_fund_id=mutual_fund.id and date(nav.date)=\"%s\"" % date
+
+    query = query_filter_list(
+        query, "mutual_fund.type", True, parsed_args.type)
+    query = query_filter_list(
+        query, "mutual_fund.type", False, parsed_args.exclude_type)
+    query = query_filter_list(query, "mutual_fund.id", True, parsed_args.id)
+    query = query_filter_list(query, "mutual_fund.id",
+                              False, parsed_args.exclude_id)
+
+    for row in CURSOR.execute(query):
+        date_delta = (
+            date_obj -
+            datetime.datetime.strptime(
+                row[5],
+                "%Y-%m-%d").date()).days
         purchases[row[0]].append({
-            'nav': row[1],
-            'amount': row[2],
-            'units': row[3],
-            'delta': date_delta})
+            'type': row[1],
+            'nav': row[2],
+            'amount': row[3],
+            'units': row[4],
+            'delta': date_delta
+        })
+
+    if not purchases:
+        assert purchases, "NAV table doesn't have entry for date specified"
 
     for name, info in purchases.items():
         weighted_sum_x_average = sum([x['amount'] * x['delta'] for x in info])
         amount_invested = sum([x['amount'] for x in info])
         total_units = sum([x['units'] for x in info])
-        weighted_average = weighted_sum_x_average / amount_invested
+        weighted_average = int(float(
+            weighted_sum_x_average) / float(amount_invested))
         total_amount_invested += amount_invested
         total_weighted_sum_x_average += weighted_sum_x_average
         current_value = int(total_units * info[0]['nav'])
@@ -96,30 +129,53 @@ def show_mutual_fund_status(parsed_args):
             ((current_value - amount_invested) * 100.0) / amount_invested, 2)
         yearly_return = (round((1.0 + (appreciation / 100.0))
                                ** (365.0 / weighted_average), 4) - 1.0) * 100
-        rows.append([name, info[0]['nav'], weighted_average, amount_invested,
-                     total_units, current_value, appreciation, yearly_return])
+        rows.append([
+            name,
+            info[0]['type'],
+            info[0]['nav'],
+            weighted_average,
+            amount_invested,
+            total_units,
+            current_value,
+            appreciation,
+            yearly_return
+        ])
 
-    for idx, row in enumerate(sorted(rows, key=lambda x: x[sort_field[field]])):
+    for idx, row in enumerate(
+            sorted(rows, key=lambda x: x[sort_field[field]])):
         table.add_row([idx + 1] + row)
     table.add_row(empty_row)
     total_weighted_average_days = total_weighted_sum_x_average / total_amount_invested
     total_appreciation = round(
-        ((total_current_value - total_amount_invested) * 100.0) / total_amount_invested, 2)
+        ((total_current_value -
+          total_amount_invested) *
+         100.0) /
+        total_amount_invested,
+        2)
     yearly_return = (round((1.0 + (total_appreciation / 100.0))
                            ** (365.0 / total_weighted_average_days), 4) - 1.0) * 100
-    table.add_row(["", "Total", "",
-                   total_weighted_average_days,
-                   total_amount_invested, "", total_current_value,
-                   total_appreciation, yearly_return])
+    table.add_row([
+        "",
+        "Total",
+        "",
+        "",
+        total_weighted_average_days,
+        total_amount_invested,
+        "",
+        total_current_value,
+        total_appreciation,
+        yearly_return
+    ])
     print table
 
 
 def update_latest_nav(parsed_args):
     queries = []
     date_str = str(datetime.date.today())
-    queries.append(
-        ("Deleting current NAV for date %s" % date_str,
-         ["delete from nav where date(date)='%s'" % date_str]))
+    queries.append((
+        "Deleting current NAV for date %s" % date_str,
+        ["delete from nav where date(date)='%s'" % date_str]
+    ))
 
     def fetch_url(row):
         rsp = requests.get(row[2])
@@ -129,13 +185,16 @@ def update_latest_nav(parsed_args):
         helper_str = "Setting NAV=%s for %s" % (latest_nav, row[1])
         query1 = "update mutual_fund set nav=%s where id=%s" % (
             latest_nav, row[0])
-        query2 = ("insert into nav(mutual_fund_id, date, nav) "
-                  "values(%s, CURRENT_TIMESTAMP, %s)" %
-                  (row[0], latest_nav))
+        query2 = ("insert into nav(mutual_fund_id, date, nav) " "values(%s, CURRENT_TIMESTAMP, %s)" % (
+            row[0], latest_nav))
         queries.append((helper_str, [query1, query2]))
 
-    threads = [threading.Thread(target=fetch_url, args=(row,))
-               for row in CURSOR.execute("select id, name, url from mutual_fund")]
+    threads = [
+        threading.Thread(
+            target=fetch_url,
+            args=(
+                row,
+            )) for row in CURSOR.execute("select id, name, url from mutual_fund")]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -150,11 +209,14 @@ def update_latest_nav(parsed_args):
 
 def insert_mf_purchase(parsed_args):
     units = round(parsed_args.amount / parsed_args.nav, 3)
-    query = (
-        "insert into mutual_fund_purchase(id, units, nav, amount, time) "
-        "values(%s, %s, %s, %s, \"%s\")" %
-        (parsed_args.id, units, parsed_args.nav,
-         parsed_args.amount, parsed_args.date))
+    query = ("insert into mutual_fund_purchase(id, units, nav, amount, time) "
+             "values(%s, %s, %s, %s, \"%s\")" % (
+                 parsed_args.id,
+                 units,
+                 parsed_args.nav,
+                 parsed_args.amount,
+                 parsed_args.date
+             ))
     CURSOR.execute(query)
     CONN.commit()
 
@@ -163,9 +225,13 @@ def insert_fixed_deposit(parsed_args):
     query = (
         "insert into fixed_deposit(name, amount, rate, tenure, deposit_date, maturity_date, maturity_amount) "
         "values(\"%s\", %s, %s, %s, \"%s\", \"%s\", %s)" %
-        (parsed_args.name, parsed_args.amount, parsed_args.rate,
-         parsed_args.tenure, parsed_args.deposit_date,
-         parsed_args.maturity_date, parsed_args.maturity_amount))
+        (parsed_args.name,
+         parsed_args.amount,
+         parsed_args.rate,
+         parsed_args.tenure,
+         parsed_args.deposit_date,
+         parsed_args.maturity_date,
+         parsed_args.maturity_amount))
     CURSOR.execute(query)
     CONN.commit()
 
@@ -176,10 +242,8 @@ def show_fixed_deposit_sort_fields():
 
 
 def show_fixed_deposit(parsed_args):
-    table, empty_row = get_table("Id", "Internal Id", "Name",
-                                 "Amount", "Rate", "Tenure",
-                                 "Deposit Date", "Maturity Date",
-                                 "Maturity Amount")
+    table, empty_row = get_table("Id", "Internal Id", "Name", "Amount",
+                                 "Rate", "Tenure", "Deposit Date", "Maturity Date", "Maturity Amount")
     sort_field = show_fixed_deposit_sort_fields()
     field = parsed_args.sort
     fds = []
@@ -222,12 +286,33 @@ def main():
 
     smfp = subparsers.add_parser('smfp')
     smfp.set_defaults(subcommand='smfp')
+    smfpFilter = smfp.add_mutually_exclusive_group(required=False)
+    smfpFilter.add_argument('-t', '--types', nargs="+",
+                            type=str, action="store", dest='type', help="fund type")
+    smfpFilter.add_argument('-e', '--exclude-types', nargs="+", type=str,
+                            action="store", dest='exclude_type', help="exclude fund types")
+    smfpFilter.add_argument('-f', '--id', nargs="+",
+                            type=str, action="store", dest='id', help="fund ids")
+    smfpFilter.add_argument('-n', '--exclude-id', nargs="+", type=str,
+                            action="store", dest='exclude_id', help="exclude fund ids")
+    smfp.add_argument('-d', '--date', type=str, action="store",
+                      dest='date', help="as on date")
 
     smfs = subparsers.add_parser('smfs')
     smfs.set_defaults(subcommand='smfs')
-    smfs.add_argument('date', nargs="?", type=str)
+    smfsFilter = smfs.add_mutually_exclusive_group(required=False)
+    smfsFilter.add_argument('-t', '--types', nargs="+",
+                            type=str, action="store", dest='type', help="fund type")
+    smfsFilter.add_argument('-e', '--exclude-types', nargs="+", type=str,
+                            action="store", dest='exclude_type', help="exclude fund types")
+    smfsFilter.add_argument('-f', '--id', nargs="+",
+                            type=str, action="store", dest='id', help="fund ids")
+    smfsFilter.add_argument('-n', '--exclude-id', nargs="+", type=str,
+                            action="store", dest='exclude_id', help="exclude fund ids")
+    smfs.add_argument('-d', '--date', type=str, action="store",
+                      dest='date', help="as on date")
     smfs.add_argument(
-        '--sort', choices=["appr", "amt", "name"], default="appr")
+        '--sort', choices=["appr", "amt", "name", "type"], default="appr")
 
     imfp = subparsers.add_parser('imfp')
     imfp.set_defaults(subcommand='imfp')
@@ -254,8 +339,8 @@ def main():
 
     sfd = subparsers.add_parser('sfd')
     sfd.set_defaults(subcommand='sfd')
-    sfd.add_argument('--sort', choices=show_fixed_deposit_sort_fields().keys(),
-                     default="amt")
+    sfd.add_argument(
+        '--sort', choices=show_fixed_deposit_sort_fields().keys(), default="amt")
 
     parsed_args = parser.parse_args()
     FUNCTION_MAP[parsed_args.subcommand](parsed_args)
