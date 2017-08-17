@@ -41,7 +41,7 @@ AMFI_MF_IDS = {
     'Escorts': '13',
     'Fidelity': '40',
     'Fortis': '51',
-    'Franklin Templeton': '27',
+    'Franklin': '27',
     'GIC': '8',
     'Goldman Sachs': '49',
     'HDFC': '9',
