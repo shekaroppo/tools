@@ -279,7 +279,7 @@ def fetch_data_from_amfi():
     urls_to_fetch = set()
     for row in CURSOR.execute("select name from mutual_fund"):
         name = row[0]
-        matching_mfs = [ x for x in AMFI_MF_IDS if x in name ]
+        matching_mfs = [ x for x in AMFI_MF_IDS if x.lower() in name.lower() ]
         urls_to_fetch |= set([get_amf_url(AMFI_MF_IDS[x]) for x in matching_mfs])
 
     url_data = [ ]
