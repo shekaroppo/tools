@@ -90,7 +90,7 @@ def get_table(*fields):
 
 
 def show_mutual_fund(parsed_args):
-    fields = ["id", "folio", "name", "type", "nav"]
+    fields = ["id", "folio", "name", "type", "nav", "scheme_code"]
     if parsed_args.url:
         fields.append("url")
     table, empty_row = get_table(*fields)
@@ -142,7 +142,6 @@ def show_mutual_fund_status(parsed_args):
         date = str(datetime.date.today())
         date_obj = datetime.date.today()
     else:
-        raise Exception("This option is not supported yet")
         date = parsed_args.date
         date_obj = datetime.datetime.strptime(date, "%Y-%m-%d").date()
 
@@ -165,7 +164,7 @@ def show_mutual_fund_status(parsed_args):
     query = query_filter_list(query, "mutual_fund.id",
                               False, parsed_args.exclude_id)
 
-    latest_nav_dict = get_latest_nav(parsed_args)
+    latest_nav_dict = get_nav(parsed_args, date)
 
     for row in CURSOR.execute(query):
         date_delta = (
@@ -194,8 +193,12 @@ def show_mutual_fund_status(parsed_args):
         total_current_value += current_value
         appreciation = round(
             ((current_value - amount_invested) * 100.0) / amount_invested, 2)
-        yearly_return = (round((1.0 + (appreciation / 100.0))
-                               ** (365.0 / weighted_average), 4) - 1.0) * 100
+        if weighted_average:
+            # When the mutual was started on that day.
+            yearly_return = (round((1.0 + (appreciation / 100.0))
+                                ** (365.0 / weighted_average), 4) - 1.0) * 100
+        else:
+            yearly_return = "NA"
         rows.append([
             name,
             info[0]['type'],
@@ -274,13 +277,13 @@ def update_latest_nav(parsed_args):
     CONN.commit()
 
 
-def fetch_data_from_amfi():
+def fetch_data_from_amfi(date):
     latest_nav = { }
     urls_to_fetch = set()
     for row in CURSOR.execute("select name from mutual_fund"):
         name = row[0]
         matching_mfs = [ x for x in AMFI_MF_IDS if x.lower() in name.lower() ]
-        urls_to_fetch |= set([get_amf_url(AMFI_MF_IDS[x]) for x in matching_mfs])
+        urls_to_fetch |= set([get_amf_url(AMFI_MF_IDS[x],to_date=date) for x in matching_mfs])
 
     url_data = [ ]
 
@@ -307,15 +310,15 @@ def dump_amfi_data_for_debug(parsed_args):
     print fetch_data_from_amfi()
 
 
-def get_latest_nav(parsed_args):
+def get_nav(parsed_args, date):
     if hasattr(parsed_args, 'moneycontrol') and parsed_args.moneycontrol:
-        return get_latest_nav_from_moneycontrol()
+        return get_nav_from_moneycontrol()
     else:
-        return get_latest_nav_from_amfi()
+        return get_nav_from_amfi(date)
 
 
-def get_latest_nav_from_amfi():
-    all_data = fetch_data_from_amfi()
+def get_nav_from_amfi(date):
+    all_data = fetch_data_from_amfi(date)
     lines = [x for x in all_data.split("\n") if x]
     scheme_code_to_nav = { }
     scheme_code_to_last_date = { }
@@ -342,7 +345,7 @@ def get_latest_nav_from_amfi():
     return mf_id_to_nav
 
 
-def get_latest_nav_from_moneycontrol():
+def get_nav_from_moneycontrol():
     mf_id_to_nav = { }
 
     def fetch_url(mf_id, url, name):
@@ -442,11 +445,16 @@ def get_amf_url(mf_id, from_date=None, to_date=None):
     url_template = ( "http://portal.amfiindia.com/"
                      "DownloadNAVHistoryReport_Po.aspx?"
                      "mf=%s&tp=1&frmdt=%s&todt=%s" )
-    if not from_date:
-        date1 = datetime.date.today() - datetime.timedelta(days=7)
-        from_date = datetime_to_amf_date(date1)
     if not to_date:
         to_date = datetime_to_amf_date(datetime.date.today())
+        to_date_obj = datetime.date.today()
+    else:
+        to_date_obj = datetime.datetime.strptime(to_date, "%Y-%m-%d").date()
+    to_date = datetime_to_amf_date(to_date_obj)
+
+    if not from_date:
+        date1 = to_date_obj - datetime.timedelta(days=7)
+        from_date = datetime_to_amf_date(date1)
     return url_template % (mf_id, from_date, to_date)
 
 
