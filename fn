@@ -136,7 +136,7 @@ def show_mutual_fund_status(parsed_args):
     table, empty_row = get_table("Index", "Name", "Type", "Ltst NAV",
                                  "Avg Days", "Amount", "Units", "Crnt val", "Appr", "Pj Yrly Ret", )
     rows = []
-    sort_field = {"appr": 7, "amt": 6, "name": 0, "type": 1}
+    sort_field = {"appr": 7, "amt": 6, "name": 0, "type": 1, "yappr": 8}
     field = parsed_args.sort
     if not parsed_args.date:
         date = str(datetime.date.today())
@@ -559,7 +559,7 @@ def main():
     smfs.add_argument('-d', '--date', type=str, action="store",
                       dest='date', help="as on date")
     smfs.add_argument(
-        '--sort', choices=["appr", "amt", "name", "type"], default="appr")
+        '--sort', choices=["appr", "amt", "name", "type", "yappr"], default="appr")
     smfs.add_argument('--moneycontrol', action="store_true")
 
     imfp = subparsers.add_parser('imfp')
