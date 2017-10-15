@@ -48,6 +48,11 @@ COLOR_MAP = {
 QUICK_ADD_TASKS = {
     1: '(A) badminton +personal +fitness due:today est:120',
 }
+TODAY_STR = " due:%s" % str(datetime.date.today())
+
+PLUGINS = []
+for plugin_path in PLUGIN_PATHS.split(','):
+    PLUGINS.append(imp.load_source('', plugin_path))
 
 def projects_in_alloc():
     allocations = {}
@@ -105,7 +110,7 @@ def remove_min(task):
     return (task[0], re.sub(r"\s*min:\d+", "", task[1]))
 
 def remove_due_today(task):
-    return (task[0], re.sub(r"\s*due:today", "", task[1]))
+    return (task[0], re.sub(r"\s*due:\d+-\d+-\d+", "", task[1]))
 
 def remove_due_today_and_min(task):
     return remove_due_today(remove_min(task))
@@ -114,10 +119,13 @@ def remove_done(task):
     """Returns the done string removed."""
     return (task[0], re.sub(r"^x \d{4}-\d{2}-\d{2} ", "", task[1]))
 
+def sanitized_task(task_str):
+    return re.sub(r'\s+', ' ', task_str)
+
 def flush_todo(todo_contents):
     """Flush the contents of todo into todo.txt file."""
     with open(FIXME_FILE, "w") as fobj:
-        fobj.write("\n".join([x[1] for x in todo_contents]))
+        fobj.write("\n".join([sanitized_task(x[1]) for x in todo_contents]))
 
 def flush_done(done_contents):
     """Flush the contents of done into done.txt file."""
@@ -329,6 +337,7 @@ def t_donow(parsed_args):
     print "Doing task '%s %s'" % (todo_contents[task][0]+1, task_str)
     time_start = 0
     time_elapsed = 0
+    abs_time_start = datetime.datetime.now()
     match = re.search(r"min:(\d+)", task_str)
     if match:
         time_start = int(match.group(1))
@@ -339,7 +348,24 @@ def t_donow(parsed_args):
         todo_contents = todo()
         new_task = [x for x in todo_contents if x[1].lower() == task_str][0]
         assert new_task
-        time_elapsed_min = time_elapsed / 60
+        time_elapsed_min1 = time_elapsed / 60
+        time_elapsed_min2 = (
+            (datetime.datetime.now() - abs_time_start).seconds / 60)
+        if abs(time_elapsed_min2 - time_elapsed_min1) > 2:
+            resp = ''
+            while resp == '1' or resp == '2':
+                print ("Discrepancy between absoulte time difference and "
+                       "elapsed time counter.")
+                print "1) Elapsed time : %s mins" % time_elapsed_min2
+                print "2) Absolute time : %s mins" % time_elapsed_min1
+                print "Enter which one to take:"
+                resp = raw_input()
+            if resp == '1':
+                time_elapsed_min = time_elapsed_min1
+            else:
+                time_elapsed_min = time_elapsed_min2
+        else:
+            time_elapsed_min = time_elapsed_min1
         if time_elapsed_min:
             new_task = remove_min(new_task)
             new_task = (new_task[0], new_task[1]+" min:%s" %
@@ -411,16 +437,37 @@ def add(todo_contents, task_str, project_short_name, priority=None):
     print "Added task '%s %s'" % (len(todo_contents)+1, task_str)
     todo_contents.append((len(todo_contents), task_str))
 
+def _get_due_str(due_on):
+    try:
+        num_days = int(due_on)
+        due_on = str(datetime.date.today() + datetime.timedelta(days=num_days))
+    except ValueError:
+        assert re.match(r'\d{4}-\d{2}-\d{2}', due_on)
+    return ' due:' + due_on
+
 def t_a(parsed_args):
     """Add the given task to todo.txt."""
     todo_contents = todo()
     task_str = parsed_args.task_str
     if parsed_args.dt:
-        task_str += " due:today"
+        task_str += TODAY_STR
+    elif parsed_args.due_on:
+        task_str += _get_due_str(parsed_args.due_on)
     add(todo_contents, task_str, parsed_args.project_short_name,
         parsed_args.priority)
     flush_todo(todo_contents)
     return todo_contents
+
+def t_sdd(parsed_args):
+    todo_contents = todo()
+    due_on = parsed_args.due_on
+    for task in parsed_args.tasks:
+        task = task - 1
+        task_obj = todo_contents[task]
+        task_obj = remove_due_today(task_obj)
+        task_obj = (task_obj[0], task_obj[1] + _get_due_str(due_on))
+        todo_contents[task] = task_obj
+    flush_todo(todo_contents)
 
 def t_cp(parsed_args):
     todo_contents = todo()
@@ -451,9 +498,9 @@ def t_ad(parsed_args):
 
 def _ndt(todo_contents, tasks_to_iterate):
     for task_obj in tasks_to_iterate:
-        if "due:today" in task_obj[1]:
-            print "Making task %s '%s' not due today" % (task_obj[0]+1, task_obj[1])
-            task_obj = (task_obj[0], task_obj[1].replace("due:today", ""))
+        if TODAY_STR in task_obj[1]:
+            print "Making task %s '%s' not due on any day" % (task_obj[0]+1, task_obj[1])
+            task_obj = remove_due_today(task_obj)
             todo_contents[task_obj[0]] = task_obj
     flush_todo(todo_contents)
 
@@ -472,9 +519,9 @@ def t_dt(parsed_args):
     for task in parsed_args.tasks:
         task = task - 1
         task_obj = todo_contents[task]
-        if "due:today" not in task_obj[1]:
+        if TODAY_STR not in task_obj[1]:
             print "Making task %s '%s' as due today" % (task+1, task_obj[1])
-            task_obj = (task_obj[0], task_obj[1] + " due:today")
+            task_obj = (task_obj[0], task_obj[1] + TODAY_STR)
             todo_contents[task] = task_obj
     flush_todo(todo_contents)
 
@@ -484,14 +531,14 @@ def t_ldt(parsed_args):
     project = PROJECT_MAP.get(parsed_args.project_short_name, "")
     print_todo_tasks(
         parsed_args, [x for x in todo_contents
-                      if "due:today" in x[1] and project in x[1]])
+                      if TODAY_STR in x[1] and project in x[1]])
 
-def t_lndt(parsed_args):
+def t_lndd(parsed_args):
     """Returns the tasks which are due today."""
     todo_contents = todo()
     project = PROJECT_MAP.get(parsed_args.project_short_name, "")
     todo_contents = [x for x in todo_contents
-                     if "due:today" not in x[1] and project in x[1]]
+                     if 'due:' not in x[1] and project in x[1]]
     t_ls(parsed_args, todo_contents)
 
 def get_group_tasks(tasks):
@@ -522,7 +569,8 @@ def t_st(parsed_args):
         day_str = str((datetime.datetime.now() - datetime.timedelta(days=delta)).date())
     except ValueError:
         pass
-    tasks_due_today_pending = [x for x in todo_contents if "due:today" in x[1]]
+    tasks_due_today_pending = [
+        remove_due_today(x) for x in todo_contents if TODAY_STR in x[1]]
     tasks_done_today = [x for x in done_contents if day_str in x[1]]
     print "---------------------"
     print "Report for %s" % day_str
@@ -597,13 +645,20 @@ def t_reo(parsed_args):
 def t_sanity(_):
     todo_contents = todo()
     tasks_without_priority = []
+    tasks_without_added_date = []
     for task in todo_contents:
         if not get_priority(task[1]):
             tasks_without_priority.append(task)
+        if 'added:' not in task[1]:
+            tasks_without_added_date.append(task)
 
     if tasks_without_priority:
         print "Tasks missing priority:"
         for task in tasks_without_priority:
+            print_task(task)
+    if tasks_without_added_date:
+        print "Tasks without added date:"
+        for task in tasks_without_added_date:
             print_task(task)
 
 def t_qa(parsed_args):
@@ -617,6 +672,7 @@ def t_qa(parsed_args):
         assert parsed_args.num in QUICK_ADD_TASKS.keys()
         task_str = QUICK_ADD_TASKS[parsed_args.num]
         today_str = str(datetime.date.today())
+        task_str = task_str.replace('due:today', TODAY_STR)
         task_str += " added:%s" % today_str
         todo_contents.append((0, task_str))
         flush_todo(todo_contents)
@@ -634,11 +690,50 @@ def t_stuck(parsed_args):
         added_date = datetime.datetime.strptime(
             match.group(1), "%Y-%m-%d").date()
         today_date = datetime.datetime.today().date()
-        if ndt and 'due:today' in task[1]:
+        if ndt and TODAY_STR in task[1]:
             continue
         if (today_date - added_date).days > days:
             tasks.append(task)
     print_todo_tasks(parsed_args, tasks)
+
+def t_daystart(parsed_args):
+    todo_contents = todo()
+    weekday_to_tasks = {
+        0: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        1: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        2: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        3: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        4: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        5: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ],
+        6: [
+            ("analyze the day due:today est:15", "ppr", "A"),
+        ]
+    }
+    for plugin in PLUGINS:
+        if not hasattr(plugin, 'get_day_tasks'):
+            continue
+        daytasks = plugin.get_day_tasks(parsed_args)
+        for key, value in daytasks.items():
+            weekday_to_tasks[key].extend(value)
+    weekday = datetime.datetime.today().weekday()
+    for task in weekday_to_tasks[weekday]:
+        args = [todo_contents]
+        task[0] = task[0].replace('due:today', TODAY_STR)
+        args.extend(task)
+        add(*args)
+    # flush_todo(todo_contents)
 
 def get_sub_parser(parser, command):
     sub_parser = parser.add_parser(command)
@@ -705,14 +800,14 @@ def config_list_commands(subparsers):
                      choices=PROJECT_MAP.keys(), default="")
     command_map['ldt'] = {'method': t_ldt}
 
-    # List what is not due today.
-    lndt = get_sub_parser(subparsers, 'lndt')
-    lndt.add_argument('project_short_name', nargs='?',
+    # List tasks without any due date.
+    lndd = get_sub_parser(subparsers, 'lndd')
+    lndd.add_argument('project_short_name', nargs='?',
                       choices=PROJECT_MAP.keys(), default="")
-    lndt.add_argument('priority', nargs='?',
+    lndd.add_argument('priority', nargs='?',
                       choices=['a', 'b', 'c', 'd', 'e', 'f', ''], default="")
-    lndt.add_argument('--numonly', action='store_true')
-    command_map['lndt'] = {'method': t_lndt}
+    lndd.add_argument('--numonly', action='store_true')
+    command_map['lndd'] = {'method': t_lndd}
 
     # List of the summary of both tasks that are due today and what was done
     # today.
@@ -748,6 +843,12 @@ def config_do_commands(subparsers):
     not_due_today = get_sub_parser(subparsers, 'ndt')
     not_due_today.add_argument('tasks', nargs='+', type=ndt_args)
     command_map['ndt'] = {'method': t_ndt}
+
+    # Set due date for a task.
+    sdd = get_sub_parser(subparsers, 'sdd')
+    sdd.add_argument('tasks', nargs='+', type=int)
+    sdd.add_argument('due_on', type=str)
+    command_map['sdd'] = {'method': t_sdd}
 
     # Add a new task.
     add_task = get_sub_parser(subparsers, 'a')
@@ -847,6 +948,9 @@ def config_special_commands(subparsers):
     get_sub_parser(subparsers, 'pa')
     command_map['pa'] = {'method': t_pa}
 
+    get_sub_parser(subparsers, 'daystart')
+    command_map['daystart'] = {'method': t_daystart}
+
     return command_map
 
 def main():
@@ -868,9 +972,8 @@ def main():
     returned_command_map = config_do_commands(subparsers)
     command_map.update(returned_command_map)
 
-    for plugin_path in PLUGIN_PATHS.split(','):
-        module = imp.load_source('', plugin_path)
-        returned_command_map = module.commands(subparsers, main_module)
+    for plugin in PLUGINS:
+        returned_command_map = plugin.commands(subparsers, main_module)
         command_map.update(returned_command_map)
 
     parsed_args = parser.parse_args()
