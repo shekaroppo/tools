@@ -132,17 +132,15 @@ def show_mutual_fund_purchase(parsed_args):
     print table
 
 
-def show_mutual_fund_status(parsed_args):
-    table, empty_row = get_table("Index", "Name", "Type", "Ltst NAV",
-                                 "Avg Days", "Amount", "Units", "Crnt val", "Appr", "Pj Yrly Ret", )
-    rows = []
-    sort_field = {"appr": 7, "amt": 6, "name": 0, "type": 1, "yappr": 8}
-    field = parsed_args.sort
-    if not parsed_args.date:
+def get_mutual_fund_status_rows( date=None, type=None, exclude_type=None,
+                                 id=None, exclude_id=None,
+                                 from_money_control=True, quiet=False ):
+    rows = [ ]
+    if not date:
         date = str(datetime.date.today())
         date_obj = datetime.date.today()
     else:
-        date = parsed_args.date
+        date = date
         date_obj = datetime.datetime.strptime(date, "%Y-%m-%d").date()
 
     total_amount_invested = 0
@@ -157,14 +155,14 @@ def show_mutual_fund_status(parsed_args):
               "where mutual_fund_purchase.id=mutual_fund.id " )
 
     query = query_filter_list(
-        query, "mutual_fund.type", True, parsed_args.type)
+        query, "mutual_fund.type", True, type)
     query = query_filter_list(
-        query, "mutual_fund.type", False, parsed_args.exclude_type)
-    query = query_filter_list(query, "mutual_fund.id", True, parsed_args.id)
+        query, "mutual_fund.type", False, exclude_type)
+    query = query_filter_list(query, "mutual_fund.id", True, id)
     query = query_filter_list(query, "mutual_fund.id",
-                              False, parsed_args.exclude_id)
+                              False, exclude_id)
 
-    latest_nav_dict = get_nav(parsed_args, date)
+    latest_nav_dict = get_nav(date, from_money_control, quiet=quiet)
 
     for row in CURSOR.execute(query):
         date_delta = (
@@ -210,6 +208,32 @@ def show_mutual_fund_status(parsed_args):
             appreciation,
             yearly_return
         ])
+
+    total_info = {
+            'total_weighted_sum_x_average': total_weighted_sum_x_average,
+            'total_amount_invested': total_amount_invested,
+            'total_current_value': total_current_value,
+    }
+
+    return rows, total_info
+
+def show_mutual_fund_status(parsed_args):
+    table, empty_row = get_table("Index", "Name", "Type", "Ltst NAV",
+                                 "Avg Days", "Amount", "Units",
+                                 "Crnt val", "Appr", "Pj Yrly Ret", )
+    rows = []
+    sort_field = {"appr": 7, "amt": 6, "name": 0, "type": 1, "yappr": 8}
+    field = parsed_args.sort
+
+    rows, total_info = get_mutual_fund_status_rows(
+            date=parsed_args.date, type=parsed_args.type,
+            exclude_type=parsed_args.exclude_type,
+            id=parsed_args.id, exclude_id=parsed_args.exclude_id,
+            from_money_control=parsed_args.moneycontrol )
+
+    total_weighted_sum_x_average = total_info[ 'total_weighted_sum_x_average' ]
+    total_amount_invested = total_info[ 'total_amount_invested' ]
+    total_current_value = total_info[ 'total_current_value' ]
 
     for idx, row in enumerate(
             sorted(rows, key=lambda x: x[sort_field[field]])):
@@ -310,14 +334,14 @@ def dump_amfi_data_for_debug(parsed_args):
     print fetch_data_from_amfi()
 
 
-def get_nav(parsed_args, date):
-    if hasattr(parsed_args, 'moneycontrol') and parsed_args.moneycontrol:
-        return get_nav_from_moneycontrol()
+def get_nav(date, from_money_control=False, quiet=False):
+    if from_money_control:
+        return get_nav_from_moneycontrol(quiet=quiet)
     else:
-        return get_nav_from_amfi(date)
+        return get_nav_from_amfi(date, quiet=quiet)
 
 
-def get_nav_from_amfi(date):
+def get_nav_from_amfi(date, quiet=False):
     all_data = fetch_data_from_amfi(date)
     lines = [x for x in all_data.split("\n") if x]
     scheme_code_to_nav = { }
@@ -339,13 +363,14 @@ def get_nav_from_amfi(date):
         name = row[2]
         if scheme_code not in scheme_code_to_nav:
             raise Exception("Scheme code not available for %s" % name)
-        print "Using NAV of date %s for %s" % (
-                scheme_code_to_last_date[scheme_code], name)
+        if not quiet:
+            print "Using NAV of date %s for %s" % (
+                    scheme_code_to_last_date[scheme_code], name)
         mf_id_to_nav[mf_id] = float(scheme_code_to_nav[scheme_code])
     return mf_id_to_nav
 
 
-def get_nav_from_moneycontrol():
+def get_nav_from_moneycontrol(quiet=False):
     mf_id_to_nav = { }
 
     def fetch_url(mf_id, url, name):
@@ -356,7 +381,8 @@ def get_nav_from_moneycontrol():
         m = re.search(r'NAV as on (\d+ \w+, \d+)', rsp.text)
         assert m
         date = m.group(1)
-        print "Using NAV of date %s for %s" % ( date, name)
+        if not quiet:
+            print "Using NAV of date %s for %s" % ( date, name)
         mf_id_to_nav[mf_id] = float(latest_nav)
 
     threads = [
@@ -602,4 +628,5 @@ def main():
     FUNCTION_MAP[parsed_args.subcommand](parsed_args)
     CONN.close()
 
-main()
+if __name__ == "__main__":
+    main()
