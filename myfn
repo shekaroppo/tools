@@ -1,0 +1,154 @@
+#!/usr/bin/python
+
+'''
+Requires the following:
+
+sudo pip install yahoo-finance
+sudo pip install forex-python
+
+'''
+
+import json
+import os
+import argparse
+import datetime
+import collections
+from yahoo_finance import Share
+from forex_python.converter import CurrencyRates
+from prettytable import PrettyTable
+import fn
+
+monthNames = [ '', 'January', 'February', 'March', 'April', 'May', 'June',
+               'July', 'August', 'September', 'October', 'November',
+               'December' ]
+c = CurrencyRates()
+
+def getNumberOfDaysSinceLastUpdated( lastUpdated ):
+    lastUpdated = datetime.datetime.strptime( lastUpdated, "%Y-%m-%d" )
+    return ( datetime.datetime.today() - lastUpdated ).days
+
+def getJsonData():
+    dataFilePath = os.path.join( os.getenv( 'MYFN_DATA_FILE' ) )
+    assert dataFilePath
+    with open( dataFilePath, "r" ) as f:
+        jsonData = json.load( f )
+    return jsonData
+
+def getShareAmount(shares, ticker):
+    amount = int( shares*
+                  float( Share( ticker ).get_price() ) *
+                  float( c.get_rate( 'USD', 'INR' ) ) )
+    return amount
+
+def t_s( parsed_args ):
+    jsonData = getJsonData()
+
+    table = PrettyTable( [ 'Name', 'Amount' ] )
+
+    total = 0
+
+    savingsAccounts = jsonData[ 'savingsAccount' ][ 'accounts' ].values()
+    amountInCash = sum( x[ 'amount' ] for x in savingsAccounts )
+    total += amountInCash
+    lastUpdateNumDays = getNumberOfDaysSinceLastUpdated(
+            jsonData[ 'savingsAccount' ][ 'lastUpdated' ] )
+    if lastUpdateNumDays > 15:
+        print ( "WARNING: Savings account data is %d days old" %
+                lastUpdateNumDays )
+
+    table.add_row( [ 'Cash', amountInCash ] )
+
+    fixedDeposits = jsonData[ 'fixedDeposits' ][ 'accounts' ].values()
+    amountInFDs = sum( x[ 'amount' ] for x in fixedDeposits )
+    total += amountInFDs
+    table.add_row( [ 'Fixed Deposits', amountInFDs ] )
+
+    special = jsonData[ 'special' ].values()
+    for special in jsonData[ 'special' ].values():
+        table.add_row( [ special[ 'name' ], special[ 'amount' ] ] )
+        total += special[ 'amount' ]
+
+    rsusVested = jsonData[ 'rsusVested' ][ 'rsus' ]
+    for rsu in rsusVested:
+        ticker = rsu[ 'ticker' ]
+        shares = rsu[ 'shares' ]
+        amount = int( shares*
+                      float( Share( ticker ).get_price() ) *
+                      float( c.get_rate( 'USD', 'INR' ) ) )
+        table.add_row( [ rsu[ 'name' ], amount ] )
+        total += amount
+
+    mutualFunds = fn.get_mutual_fund_status_rows(quiet=True)
+    amountInMfs = 0
+    for mf in mutualFunds[0]:
+        amountInMfs += mf[ 6 ]
+    total += amountInMfs
+    table.add_row( [ 'Mutual Funds', amountInMfs ] )
+
+    table.add_row( [ '', '' ] )
+    table.add_row( [ 'TOTAL', total ] )
+
+    print table
+
+def nextMonth( month, year ):
+    month += 1
+    if month > 12:
+        month = 1
+        year += 1
+    return month, year
+
+def t_exp(parsed_args):
+    jsonData = getJsonData()
+    today = datetime.datetime.today()
+    salary = jsonData[ 'expectedIncome' ][ 'salary' ]
+    monthYearToRsusVesting = collections.defaultdict( list )
+    oneShareAmountMap = { }
+    for rsuVesting in jsonData[ 'expectedIncome' ][ 'rsuVesting' ]:
+        vestDate = rsuVesting[ 'vestDate' ]
+        shares = rsuVesting[ 'shares' ]
+        vestDate = datetime.datetime.strptime( vestDate, "%Y-%m-%d" )
+        month = vestDate.month
+        year = vestDate.year
+        if rsuVesting[ 'ticker' ] not in oneShareAmountMap:
+            oneShareAmountMap[ rsuVesting[ 'ticker' ] ] = (
+                    getShareAmount( 1, rsuVesting[ 'ticker' ] ) )
+        oneShareAmount = oneShareAmountMap[ rsuVesting[ 'ticker' ] ]
+        monthYearToRsusVesting[ ( month, year ) ].append(
+                shares * oneShareAmount )
+
+    total = 0
+    month, year = today.month, today.year
+    for _ in range( 6 ):
+        monthName = monthNames[ month ]
+        print "%s:" % monthName
+        print "--> Salary: %s" % salary
+        total += salary
+        if ( month, year ) in monthYearToRsusVesting:
+            rsuAmount = sum( monthYearToRsusVesting[ ( month, year ) ] )
+            print "--> RSUs: %s" % rsuAmount
+            total += rsuAmount
+        month, year = nextMonth( month, year )
+    print "Total over next 6 months: %s" % total
+
+def get_sub_parser(parser, command):
+    sp = parser.add_parser(command)
+    sp.set_defaults(subcommand=command)
+    return sp
+
+COMMAND_MAP = {
+    's': {
+        'method': t_s,
+    },
+    'exp': {
+        'method': t_exp,
+    },
+}
+
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers(title='subcommands')
+
+get_sub_parser(subparsers, 's')
+get_sub_parser(subparsers, 'exp')
+
+parsed_args = parser.parse_args()
+COMMAND_MAP[parsed_args.subcommand]['method'](parsed_args)
