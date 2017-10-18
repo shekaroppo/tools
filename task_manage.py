@@ -533,6 +533,20 @@ def t_ldt(parsed_args):
         parsed_args, [x for x in todo_contents
                       if TODAY_STR in x[1] and project in x[1]])
 
+def t_lpdd(parsed_args):
+    """Returns the tasks which are due today."""
+    todo_contents = todo()
+    selected_tasks = []
+    for x in todo_contents:
+        due_match = re.search(r"due:(\d+-\d+-\d+)", x[1])
+        if due_match:
+            due_date = datetime.datetime.strptime(
+                due_match.group(1), "%Y-%m-%d").date()
+            today_date = datetime.datetime.today().date()
+            if (due_date - today_date).days < 0:
+                selected_tasks.append(x)
+    print_todo_tasks(parsed_args, selected_tasks)
+
 def t_lndd(parsed_args):
     """Returns the tasks which are due today."""
     todo_contents = todo()
@@ -700,25 +714,32 @@ def t_daystart(parsed_args):
     todo_contents = todo()
     weekday_to_tasks = {
         0: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         1: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         2: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         3: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         4: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         5: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ],
         6: [
-            ("analyze the day due:today est:15", "ppr", "A"),
+            ["analyze the day due:today est:15", "ppr", "A"],
+            ["plan for the day due:today est:10", "ppr", "A"],
         ]
     }
     for plugin in PLUGINS:
@@ -733,7 +754,7 @@ def t_daystart(parsed_args):
         task[0] = task[0].replace('due:today', TODAY_STR)
         args.extend(task)
         add(*args)
-    # flush_todo(todo_contents)
+    flush_todo(todo_contents)
 
 def get_sub_parser(parser, command):
     sub_parser = parser.add_parser(command)
@@ -800,6 +821,12 @@ def config_list_commands(subparsers):
                      choices=PROJECT_MAP.keys(), default="")
     command_map['ldt'] = {'method': t_ldt}
 
+    # List what is due today.
+    lpdd = get_sub_parser(subparsers, 'lpdd')
+    ldt.add_argument('project_short_name', nargs='?',
+                     choices=PROJECT_MAP.keys(), default="")
+    command_map['lpdd'] = {'method': t_lpdd}
+
     # List tasks without any due date.
     lndd = get_sub_parser(subparsers, 'lndd')
     lndd.add_argument('project_short_name', nargs='?',
@@ -857,6 +884,7 @@ def config_do_commands(subparsers):
     add_task.add_argument('priority', choices=priorities())
     add_task.add_argument('task_str', type=str)
     add_task.add_argument('-d', '--dt', action='store_true')
+    add_task.add_argument('--due_on', type=str)
     command_map['a'] = {'method': t_a}
 
     # Adds a new task and does donow on that task.
@@ -911,7 +939,7 @@ def config_do_commands(subparsers):
     test = get_sub_parser(subparsers, 'est')
     test.add_argument('task', type=int)
     test.add_argument('est', type=int)
-    command_map['min'] = {'method': t_min}
+    command_map['est'] = {'method': t_est}
 
     return command_map
 
