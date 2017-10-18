@@ -490,6 +490,19 @@ def print_amf_url(parsed_args):
         print get_amf_url(mf_id, parsed_args.from_date, parsed_args.to_date)
         print ""
 
+def distribution(parsed_args):
+    table, empty_row = get_table("Type", "Amount", "Percentage")
+    query = ("select mutual_fund.type, sum(mutual_fund_purchase.amount) "
+             "from mutual_fund_purchase join mutual_fund "
+             "where mutual_fund_purchase.id=mutual_fund.id "
+             "group by mutual_fund.type")
+    sum_amount = sum(x[1] for x in CURSOR.execute(query))
+    for mf_type, amount in CURSOR.execute(query):
+        percentage = (amount * 100) / sum_amount
+        table.add_row([mf_type, amount, percentage])
+    table.add_row(["", "", ""])
+    table.add_row(["Total", sum_amount, ""])
+    print table
 
 FUNCTION_MAP = {
     'smf': show_mutual_fund,
@@ -502,6 +515,7 @@ FUNCTION_MAP = {
     'snav': show_nav,
     'pamfurl': print_amf_url,
     'dumpmfdata': dump_amfi_data_for_debug,
+    'distribution': distribution,
 }
 
 
@@ -597,6 +611,9 @@ def main():
 
     dumpmfdata = subparsers.add_parser('dumpmfdata')
     dumpmfdata.set_defaults(subcommand='dumpmfdata')
+
+    distribution = subparsers.add_parser('dis')
+    distribution.set_defaults(subcommand='distribution')
 
     uln = subparsers.add_parser('uln')
     uln.set_defaults(subcommand='uln')
