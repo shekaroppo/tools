@@ -301,7 +301,7 @@ def update_latest_nav(parsed_args):
     CONN.commit()
 
 
-def fetch_data_from_amfi(date):
+def fetch_data_from_amfi(date=None):
     latest_nav = { }
     urls_to_fetch = set()
     for row in CURSOR.execute("select name from mutual_fund"):
@@ -375,9 +375,10 @@ def get_nav_from_moneycontrol(quiet=False):
 
     def fetch_url(mf_id, url, name):
         rsp = requests.get(url)
-        m = re.search(r'class="bd30tp">(\d+\.\d+)</span>', rsp.text)
+        m = re.search(r'class="bd30tp">([\d,]+\.\d+)</span>', rsp.text)
         assert m
         latest_nav = m.group(1)
+        latest_nav = latest_nav.replace(',', '')
         m = re.search(r'NAV as on (\d+ \w+, \d+)', rsp.text)
         assert m
         date = m.group(1)
