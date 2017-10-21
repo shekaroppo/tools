@@ -134,7 +134,7 @@ def show_mutual_fund_purchase(parsed_args):
 
 def get_mutual_fund_status_rows( date=None, type=None, exclude_type=None,
                                  id=None, exclude_id=None,
-                                 from_money_control=True, quiet=False ):
+                                 from_amfi=False, quiet=False ):
     rows = [ ]
     if not date:
         date = str(datetime.date.today())
@@ -162,7 +162,7 @@ def get_mutual_fund_status_rows( date=None, type=None, exclude_type=None,
     query = query_filter_list(query, "mutual_fund.id",
                               False, exclude_id)
 
-    latest_nav_dict = get_nav(date, from_money_control, quiet=quiet)
+    latest_nav_dict = get_nav(date, from_amfi, quiet=quiet)
 
     for row in CURSOR.execute(query):
         date_delta = (
@@ -229,7 +229,7 @@ def show_mutual_fund_status(parsed_args):
             date=parsed_args.date, type=parsed_args.type,
             exclude_type=parsed_args.exclude_type,
             id=parsed_args.id, exclude_id=parsed_args.exclude_id,
-            from_money_control=parsed_args.moneycontrol )
+            from_amfi=parsed_args.from_amfi)
 
     total_weighted_sum_x_average = total_info[ 'total_weighted_sum_x_average' ]
     total_amount_invested = total_info[ 'total_amount_invested' ]
@@ -334,11 +334,11 @@ def dump_amfi_data_for_debug(parsed_args):
     print fetch_data_from_amfi()
 
 
-def get_nav(date, from_money_control=False, quiet=False):
-    if from_money_control:
-        return get_nav_from_moneycontrol(quiet=quiet)
-    else:
+def get_nav(date, from_amfi=False, quiet=False):
+    if from_amfi:
         return get_nav_from_amfi(date, quiet=quiet)
+    else:
+        return get_nav_from_moneycontrol(quiet=quiet)
 
 
 def get_nav_from_amfi(date, quiet=False):
@@ -601,7 +601,7 @@ def main():
                       dest='date', help="as on date")
     smfs.add_argument(
         '--sort', choices=["appr", "amt", "name", "type", "yappr"], default="appr")
-    smfs.add_argument('--moneycontrol', action="store_true")
+    smfs.add_argument('--from_amfi', action="store_true")
 
     imfp = subparsers.add_parser('imfp')
     imfp.set_defaults(subcommand='imfp')
