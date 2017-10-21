@@ -14,7 +14,11 @@ var lsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List notes",
 	Run: func(cmd *cobra.Command, args []string) {
-		files, err := lib.List()
+		var filename string
+		if len(args) > 0 {
+			filename = args[0]
+		}
+		files, err := lib.List(filename)
 		if err != nil {
 			log.Fatal(err)
 		}
