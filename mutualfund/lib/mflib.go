@@ -3,12 +3,17 @@ package mflib
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
+	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -29,29 +34,55 @@ type navResult struct {
 	err error
 }
 
-/*
 func moneyControlNavHelper(mfs []MutualFund) (map[MutualFund]float64, error) {
-	navFunc := func(mf MutualFund) navResult {
+	navFunc := func(mf MutualFund, ch chan navResult) {
 		resp, err := http.Get(mf.mcUrl)
 		if err != nil {
-			return navResult{0, err}
+			ch <- navResult{0, err}
+			return
 		}
 		defer resp.Body.Close()
 		htmlBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return navResult{0, err}
+			ch <- navResult{0, err}
+			return
 		}
-			regex = regexp.Compile(`class="bd30tp">(\d+\\.\d+)</span>`)
-			matchingBytes := re.Find(htmlBytes)
-			if matchingBytes == nil {
-				return McUrlError(true)
-			}
-
+		regex, _ := regexp.Compile(`class="bd30tp">([\d,]+\.\d+)`)
+		matchingBytes := regex.FindSubmatch(htmlBytes)
+		if matchingBytes == nil {
+			ch <- navResult{0, McUrlError(true)}
+			return
+		}
+		stringNav := strings.Replace(string(matchingBytes[1]), ",", "", -1)
+		floatNav, err := strconv.ParseFloat(stringNav, 64)
+		if err != nil {
+			ch <- navResult{floatNav, errors.New("Error parsing number " + stringNav)}
+			return
+		}
+		ch <- navResult{floatNav, nil}
 	}
+	ch := make(chan navResult)
 	for _, mf := range mfs {
+		go navFunc(mf, ch)
 	}
+	mfToNav := make(map[MutualFund]float64)
+	var errorStr string
+	for _, mf := range mfs {
+		result := <-ch
+		if result.err != nil {
+			errorStr = result.err.Error() + "\n"
+		} else {
+			mfToNav[mf] = result.nav
+		}
+	}
+
+	var err error
+	if errorStr != "" {
+		err = errors.New(errorStr)
+	}
+
+	return mfToNav, err
 }
-*/
 
 type MutualFund struct {
 	mfid           int
@@ -460,6 +491,10 @@ func GetMutualFundSummary(
 	mfps, err := ListMutualFundPurchases()
 	if err != nil {
 		return nil, err
+	}
+
+	if navHelper == nil {
+		navHelper = moneyControlNavHelper
 	}
 
 	if nowHelper == nil {
