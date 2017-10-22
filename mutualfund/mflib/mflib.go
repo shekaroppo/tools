@@ -30,6 +30,7 @@ type NowHelper func() time.Time
 type NavHelper func([]MutualFund) (map[MutualFund]float64, error)
 
 type navResult struct {
+	mf  MutualFund
 	nav float64
 	err error
 }
@@ -38,28 +39,28 @@ func moneyControlNavHelper(mfs []MutualFund) (map[MutualFund]float64, error) {
 	navFunc := func(mf MutualFund, ch chan navResult) {
 		resp, err := http.Get(mf.mcUrl)
 		if err != nil {
-			ch <- navResult{0, err}
+			ch <- navResult{mf, 0, err}
 			return
 		}
 		defer resp.Body.Close()
 		htmlBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			ch <- navResult{0, err}
+			ch <- navResult{mf, 0, err}
 			return
 		}
 		regex, _ := regexp.Compile(`class="bd30tp">([\d,]+\.\d+)`)
 		matchingBytes := regex.FindSubmatch(htmlBytes)
 		if matchingBytes == nil {
-			ch <- navResult{0, McUrlError(true)}
+			ch <- navResult{mf, 0, McUrlError(true)}
 			return
 		}
 		stringNav := strings.Replace(string(matchingBytes[1]), ",", "", -1)
 		floatNav, err := strconv.ParseFloat(stringNav, 64)
 		if err != nil {
-			ch <- navResult{floatNav, errors.New("Error parsing number " + stringNav)}
+			ch <- navResult{mf, 0, errors.New("Error parsing number " + stringNav)}
 			return
 		}
-		ch <- navResult{floatNav, nil}
+		ch <- navResult{mf, floatNav, nil}
 	}
 	ch := make(chan navResult)
 	for _, mf := range mfs {
@@ -67,12 +68,13 @@ func moneyControlNavHelper(mfs []MutualFund) (map[MutualFund]float64, error) {
 	}
 	mfToNav := make(map[MutualFund]float64)
 	var errorStr string
-	for _, mf := range mfs {
+	for i := 0; i < len(mfs); i++ {
 		result := <-ch
 		if result.err != nil {
 			errorStr = result.err.Error() + "\n"
 		} else {
-			mfToNav[mf] = result.nav
+			fmt.Println("NAV for", result.mf.name, "is", result.nav)
+			mfToNav[result.mf] = result.nav
 		}
 	}
 
@@ -117,6 +119,9 @@ type mutualFundSummarySorter struct {
 }
 
 func sortByMfId(mfsum1 MutualFundSummary, mfsum2 MutualFundSummary) bool {
+	if mfsum1.mfid == 0 {
+		return false
+	}
 	return mfsum1.mfid < mfsum2.mfid
 }
 
@@ -293,9 +298,9 @@ func ListMutualFundHelper() (string, error) {
 	}
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
-	table.SetHeader([]string{"MfId", "Name", "Folio", "Type"})
+	table.SetHeader([]string{"MfId", "Name", "Folio", "Type", "Schemecode"})
 	for _, mf := range mfs {
-		table.Append([]string{strconv.Itoa(mf.mfid), mf.name, mf.folio, mf.amfiSchemeCode})
+		table.Append([]string{strconv.Itoa(mf.mfid), mf.name, mf.folio, mf.mftype, mf.amfiSchemeCode})
 	}
 	table.Render()
 	return buf.String(), nil
@@ -533,6 +538,8 @@ func GetMutualFundSummary(
 	}
 
 	var mfss []MutualFundSummary
+	var totalSumAmountxDays, totalSumAmount, totalCurrentValue float64
+	var totalAppreciation, totalProjectedYearlyRet float64
 	for mf, _ := range mutualFundsMap {
 		mfs := mfsMap[mf]
 		mfs.avgDays = int(sumAmountxDays[mf] / sumAmount[mf])
@@ -542,7 +549,23 @@ func GetMutualFundSummary(
 		power := 365 / float64(mfs.avgDays)
 		mfs.projectedYearlyRet = (math.Pow(appr, power) - 1) * 100
 		mfss = append(mfss, mfs)
+
+		totalSumAmountxDays += sumAmountxDays[mf]
+		totalSumAmount += sumAmount[mf]
+		totalCurrentValue += mfs.currentValue
 	}
+
+	totalAppreciation = ((totalCurrentValue - totalSumAmount) / totalSumAmount) * 100
+	totalAvgDays := int(totalSumAmountxDays / totalSumAmount)
+	appr := totalCurrentValue / totalSumAmount
+	power := 365 / float64(totalAvgDays)
+	totalProjectedYearlyRet = (math.Pow(appr, power) - 1) * 100
+
+	totalMf := MutualFund{0, "Total", "", "", "", ""}
+	totalMfSum := MutualFundSummary{
+		totalMf, totalAvgDays, totalSumAmount, 0,
+		totalCurrentValue, totalAppreciation, totalProjectedYearlyRet}
+	mfss = append(mfss, totalMfSum)
 
 	return mfss, nil
 }
@@ -564,11 +587,20 @@ func MutualFundSummaryHelper(navHelper NavHelper, nowHelper NowHelper) (string, 
 		"Amount", "Units", "CurrentVal", "Appr", "PrjRet"})
 	for _, mfsum := range mfsums {
 		amount := fmt.Sprintf("%.3f", mfsum.amount)
-		units := fmt.Sprintf("%.3f", mfsum.units)
+		var units string
+		if mfsum.units != 0 {
+			units = fmt.Sprintf("%.3f", mfsum.units)
+		} else {
+		}
 		currentValue := fmt.Sprintf("%.3f", mfsum.currentValue)
 		appreciation := fmt.Sprintf("%.3f", mfsum.appreciation)
 		projectedYearlyRet := fmt.Sprintf("%.3f", mfsum.projectedYearlyRet)
-		table.Append([]string{strconv.Itoa(mfsum.mfid), mfsum.name, mfsum.mftype,
+		var mfIdStr string
+		if mfsum.mfid != 0 {
+			mfIdStr = strconv.Itoa(mfsum.mfid)
+		}
+		table.Append([]string{
+			mfIdStr, mfsum.name, mfsum.mftype,
 			strconv.Itoa(mfsum.avgDays), amount, units, currentValue, appreciation,
 			projectedYearlyRet})
 	}

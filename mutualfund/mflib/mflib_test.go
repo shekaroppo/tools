@@ -105,11 +105,11 @@ func TestMutualFundHelper(t *testing.T) {
 	output, err := ListMutualFundHelper()
 	assert.Nil(t, err)
 	expOuptut :=
-		`+------+------+--------+-------+
-| MFID | NAME | FOLIO  | TYPE  |
-+------+------+--------+-------+
-|    1 | mf1  | folio1 | amfi1 |
-+------+------+--------+-------+
+		`+------+------+--------+-------+------------+
+| MFID | NAME | FOLIO  | TYPE  | SCHEMECODE |
++------+------+--------+-------+------------+
+|    1 | mf1  | folio1 | type1 | amfi1      |
++------+------+--------+-------+------------+
 `
 	assert.Equal(t, expOuptut, output)
 
@@ -231,7 +231,7 @@ func TestGetMutualFundSummary(t *testing.T) {
 			assert.Equal(t, int(mfsum.units), 200)
 			assert.Equal(t, int(mfsum.currentValue), 100000)
 			assert.Equal(t, int(mfsum.appreciation), 66)
-		} else {
+		} else if mfsum.mfid == 2 {
 			assert.Equal(t, mfsum.MutualFund, mfs[1])
 			assert.Equal(t, int(mfsum.avgDays), 25)
 			assert.Equal(t, int(mfsum.amount), 40000)
@@ -244,12 +244,13 @@ func TestGetMutualFundSummary(t *testing.T) {
 	output, err := MutualFundSummaryHelper(NavHelper(navHelper), NowHelper(nowHelper))
 	assert.Nil(t, err)
 	expOutput :=
-		`+------+------+-------+---------+-----------+---------+------------+---------+---------------+
-| MFID | NAME | TYPE  | AVGDAYS |  AMOUNT   |  UNITS  | CURRENTVAL |  APPR   |    PRJRET     |
-+------+------+-------+---------+-----------+---------+------------+---------+---------------+
-|    1 | mf1  | type1 |      16 | 60000.000 | 200.000 | 100000.000 |  66.667 |  11505906.118 |
-|    2 | mf2  | type2 |      25 | 40000.000 | 200.000 | 120000.000 | 200.000 | 924634879.227 |
-+------+------+-------+---------+-----------+---------+------------+---------+---------------+
+		`+------+-------+-------+---------+------------+---------+------------+---------+---------------+
+| MFID | NAME  | TYPE  | AVGDAYS |   AMOUNT   |  UNITS  | CURRENTVAL |  APPR   |    PRJRET     |
++------+-------+-------+---------+------------+---------+------------+---------+---------------+
+|    1 | mf1   | type1 |      16 |  60000.000 | 200.000 | 100000.000 |  66.667 |  11505906.118 |
+|    2 | mf2   | type2 |      25 |  40000.000 | 200.000 | 120000.000 | 200.000 | 924634879.227 |
+|      | Total |       |      20 | 100000.000 |         | 220000.000 | 120.000 | 177506262.736 |
++------+-------+-------+---------+------------+---------+------------+---------+---------------+
 `
 	assert.Equal(t, expOutput, output)
 }
@@ -265,4 +266,7 @@ func TestMoneyControlNavHelper(t *testing.T) {
 	}
 	assert.Nil(t, err)
 	assert.Equal(t, len(mfToNav), 1)
+	for _, nav := range mfToNav {
+		assert.NotEqual(t, nav, 0)
+	}
 }
