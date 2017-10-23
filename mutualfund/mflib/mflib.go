@@ -125,6 +125,13 @@ func sortByMfId(mfsum1 MutualFundSummary, mfsum2 MutualFundSummary) bool {
 	return mfsum1.mfid < mfsum2.mfid
 }
 
+func sortByAppreciation(mfsum1 MutualFundSummary, mfsum2 MutualFundSummary) bool {
+	if mfsum1.mfid == 0 {
+		return false
+	}
+	return mfsum1.appreciation < mfsum2.appreciation
+}
+
 func (mfss *mutualFundSummarySorter) Len() int {
 	return len(mfss.mfsums)
 }
@@ -570,12 +577,18 @@ func GetMutualFundSummary(
 	return mfss, nil
 }
 
-func MutualFundSummaryHelper(navHelper NavHelper, nowHelper NowHelper) (string, error) {
+func MutualFundSummaryHelper(
+	navHelper NavHelper, nowHelper NowHelper,
+	sortBy string) (string, error) {
 	mfsums, err := GetMutualFundSummary(navHelper, nowHelper)
 
 	var mfssorter mutualFundSummarySorter
 	mfssorter.mfsums = mfsums
-	mfssorter.by = sortByMfId
+	if sortBy == "appreciation" {
+		mfssorter.by = sortByAppreciation
+	} else {
+		mfssorter.by = sortByMfId
+	}
 	sort.Sort(&mfssorter)
 
 	if err != nil {
@@ -605,5 +618,6 @@ func MutualFundSummaryHelper(navHelper NavHelper, nowHelper NowHelper) (string, 
 			projectedYearlyRet})
 	}
 	table.Render()
+	fmt.Println(buf.String())
 	return buf.String(), nil
 }
