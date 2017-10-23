@@ -712,36 +712,12 @@ def t_stuck(parsed_args):
 
 def t_daystart(parsed_args):
     todo_contents = todo()
-    weekday_to_tasks = {
-        0: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        1: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        2: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        3: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        4: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        5: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ],
-        6: [
-            ["analyze the day due:today est:15", "ppr", "A"],
-            ["plan for the day due:today est:10", "ppr", "A"],
-        ]
-    }
+    weekday_to_tasks = collections.defaultdict(list)
+    day_tasks_file = os.getenv("DAY_TASKS_FILE")
+    if day_tasks_file:
+        with open(day_tasks_file, "r") as f:
+            import pdb; pdb.set_trace()
+            weekday_to_tasks = eval(f.read())
     for plugin in PLUGINS:
         if not hasattr(plugin, 'get_day_tasks'):
             continue
