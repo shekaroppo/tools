@@ -115,7 +115,7 @@ func TestMutualFundHelper(t *testing.T) {
 
 	err = RemoveMutualFundHelper(1)
 	assert.Nil(t, err)
-	retMfs, err := ListMutualFunds()
+	retMfs, err := ListMutualFundPurchases()
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(retMfs))
 

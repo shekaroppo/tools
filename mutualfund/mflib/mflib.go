@@ -618,6 +618,5 @@ func MutualFundSummaryHelper(
 			projectedYearlyRet})
 	}
 	table.Render()
-	fmt.Println(buf.String())
 	return buf.String(), nil
 }
