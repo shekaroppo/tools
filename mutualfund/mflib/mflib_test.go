@@ -241,22 +241,9 @@ func TestGetMutualFundSummary(t *testing.T) {
 		}
 	}
 
-	output, err := MutualFundSummaryHelper(NavHelper(navHelper), NowHelper(nowHelper), "")
+	output, err := MutualFundSummaryHelper(NavHelper(navHelper), NowHelper(nowHelper))
 	assert.Nil(t, err)
 	expOutput :=
-		`+------+-------+-------+---------+------------+---------+------------+---------+---------------+
-| MFID | NAME  | TYPE  | AVGDAYS |   AMOUNT   |  UNITS  | CURRENTVAL |  APPR   |    PRJRET     |
-+------+-------+-------+---------+------------+---------+------------+---------+---------------+
-|    1 | mf1   | type1 |      16 |  60000.000 | 200.000 | 100000.000 |  66.667 |  11505906.118 |
-|    2 | mf2   | type2 |      25 |  40000.000 | 200.000 | 120000.000 | 200.000 | 924634879.227 |
-|      | Total |       |      20 | 100000.000 |         | 220000.000 | 120.000 | 177506262.736 |
-+------+-------+-------+---------+------------+---------+------------+---------+---------------+
-`
-	assert.Equal(t, expOutput, output)
-
-	output, err = MutualFundSummaryHelper(NavHelper(navHelper), NowHelper(nowHelper), "appreciation")
-	assert.Nil(t, err)
-	expOutput =
 		`+------+-------+-------+---------+------------+---------+------------+---------+---------------+
 | MFID | NAME  | TYPE  | AVGDAYS |   AMOUNT   |  UNITS  | CURRENTVAL |  APPR   |    PRJRET     |
 +------+-------+-------+---------+------------+---------+------------+---------+---------------+

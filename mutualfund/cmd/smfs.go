@@ -15,15 +15,7 @@ var smfsCmd = &cobra.Command{
 	Use:   "smfs",
 	Short: "Summary of mutual fund investments",
 	Run: func(cmd *cobra.Command, args []string) {
-		var sortArg string
-		if sortBy == "appr" {
-			sortArg = "appreciation"
-		} else if sortBy == "" {
-			sortArg = ""
-		} else {
-			log.Fatal("Unknown sortBy ", sortBy)
-		}
-		output, err := mflib.MutualFundSummaryHelper(nil, nil, sortArg)
+		output, err := mflib.MutualFundSummaryHelper(nil, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -33,5 +25,4 @@ var smfsCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(smfsCmd)
-	smfsCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "sort output")
 }

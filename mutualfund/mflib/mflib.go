@@ -118,13 +118,6 @@ type mutualFundSummarySorter struct {
 	by     func(mfsum1, mfsum2 MutualFundSummary) bool
 }
 
-func sortByMfId(mfsum1 MutualFundSummary, mfsum2 MutualFundSummary) bool {
-	if mfsum1.mfid == 0 {
-		return false
-	}
-	return mfsum1.mfid < mfsum2.mfid
-}
-
 func sortByAppreciation(mfsum1 MutualFundSummary, mfsum2 MutualFundSummary) bool {
 	if mfsum1.mfid == 0 {
 		return false
@@ -578,17 +571,12 @@ func GetMutualFundSummary(
 }
 
 func MutualFundSummaryHelper(
-	navHelper NavHelper, nowHelper NowHelper,
-	sortBy string) (string, error) {
+	navHelper NavHelper, nowHelper NowHelper) (string, error) {
 	mfsums, err := GetMutualFundSummary(navHelper, nowHelper)
 
 	var mfssorter mutualFundSummarySorter
 	mfssorter.mfsums = mfsums
-	if sortBy == "appreciation" {
-		mfssorter.by = sortByAppreciation
-	} else {
-		mfssorter.by = sortByMfId
-	}
+	mfssorter.by = sortByAppreciation
 	sort.Sort(&mfssorter)
 
 	if err != nil {
