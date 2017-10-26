@@ -608,3 +608,38 @@ func MutualFundSummaryHelper(
 	table.Render()
 	return buf.String(), nil
 }
+
+func MutualFundDisHelper() (string, error) {
+	mfps, err := ListMutualFundPurchases()
+	if err != nil {
+		return "", err
+	}
+	typeToAmount := make(map[string]float64)
+	typeToPercentage := make(map[string]float64)
+	var total float64
+	for _, mfp := range mfps {
+		typeToAmount[mfp.mftype] += mfp.amount
+		total += mfp.amount
+	}
+	for _, mfp := range mfps {
+		typeToPercentage[mfp.mftype] = (typeToAmount[mfp.mftype] * 100 / total)
+	}
+
+	var buf bytes.Buffer
+	table := tablewriter.NewWriter(&buf)
+	table.SetHeader([]string{"Type", "Amount", "Percentage"})
+
+	var types []string
+	for mftype, _ := range typeToAmount {
+		types = append(types, mftype)
+	}
+	sort.Strings(types)
+
+	for _, mftype := range types {
+		amount := fmt.Sprintf("%.3f", typeToAmount[mftype])
+		percentage := fmt.Sprintf("%.3f", typeToPercentage[mftype])
+		table.Append([]string{mftype, amount, percentage})
+	}
+	table.Render()
+	return buf.String(), nil
+}

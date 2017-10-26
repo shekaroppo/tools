@@ -270,3 +270,29 @@ func TestMoneyControlNavHelper(t *testing.T) {
 		assert.NotEqual(t, nav, 0)
 	}
 }
+
+func TestMutualFundDisHelper(t *testing.T) {
+	tempFile := createTestDb(t)
+	InitDb()
+	defer os.Remove(tempFile)
+
+	mfs := createMfs()
+	for _, mf := range mfs {
+		err := InsertMutualFund(mf)
+		assert.Nil(t, err)
+	}
+	mfps := createMfps(t, mfs)
+	InsertMutualFundPurchase(mfps...)
+
+	output, err := MutualFundDisHelper()
+	assert.Nil(t, err)
+	expectedOutput :=
+		`+-------+-----------+------------+
+| TYPE  |  AMOUNT   | PERCENTAGE |
++-------+-----------+------------+
+| type1 | 60000.000 |     60.000 |
+| type2 | 40000.000 |     40.000 |
++-------+-----------+------------+
+`
+	assert.Equal(t, expectedOutput, output)
+}
