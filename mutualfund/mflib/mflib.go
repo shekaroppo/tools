@@ -191,7 +191,7 @@ func InitDb() error {
 		amount integer,
 		nav real,
 		time timestamp,
-		foreign key(mfid) references mutual_fund(id));`
+		foreign key(mfid) references mutual_fund(mfid));`
 	_, err = db.Exec(sqlStmt)
 	if err != nil {
 		log.Printf("%q: %s\n", err, sqlStmt)
