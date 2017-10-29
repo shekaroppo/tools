@@ -29,6 +29,9 @@ type MfDbOpenError struct {
 type NowHelper func() time.Time
 type NavHelper func([]MutualFund) (map[MutualFund]float64, error)
 
+var NavHelperFunc NavHelper = moneyControlNavHelper
+var NowHelperFunc NowHelper = time.Now
+
 type navResult struct {
 	mf  MutualFund
 	nav float64
@@ -194,6 +197,9 @@ func InitDb() error {
 		log.Printf("%q: %s\n", err, sqlStmt)
 		return err
 	}
+
+	mfDb := os.Getenv("MFDB")
+	log.Println("Initialized mutual fund database at", mfDb)
 	return nil
 }
 
@@ -243,6 +249,9 @@ func GetMutualFunds(id int) (MutualFund, error) {
 	if err != nil {
 		return mf, err
 	}
+	if len(mfs) != 1 {
+		return mf, errors.New("Mutual fund with id=" + strconv.Itoa(id) + " not found")
+	}
 	return mfs[0], nil
 }
 
@@ -291,10 +300,10 @@ func RemoveMutualFundHelper(mfid int) error {
 	return RemoveMutualFund(mf)
 }
 
-func ListMutualFundHelper() (string, error) {
+func ListMutualFundHelper() error {
 	mfs, err := ListMutualFunds()
 	if err != nil {
-		return "", nil
+		return err
 	}
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
@@ -303,7 +312,8 @@ func ListMutualFundHelper() (string, error) {
 		table.Append([]string{strconv.Itoa(mf.mfid), mf.name, mf.folio, mf.mftype, mf.amfiSchemeCode})
 	}
 	table.Render()
-	return buf.String(), nil
+	log.Print(buf.String())
+	return nil
 }
 
 func RemoveMutualFund(mf MutualFund) error {
@@ -431,7 +441,9 @@ func InsertMutualFundPurchaseHelper(
 	mfp.nav = nav
 	mfp.time, err = time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return err
+		return errors.New(
+			"Error parsing date '" + dateStr + "'. " +
+				"Please specify in format YYYY-MM-DD")
 	}
 	return InsertMutualFundPurchase(mfp)
 }
@@ -442,10 +454,10 @@ func RemoveMutualFundPurchaseHelper(mfpid int) error {
 	return RemoveMutualFundPurchase(mfp)
 }
 
-func ListMutualFundPurchaseHelper() (string, error) {
+func ListMutualFundPurchaseHelper() error {
 	mfps, err := ListMutualFundPurchases()
 	if err != nil {
-		return "", err
+		return err
 	}
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
@@ -458,7 +470,8 @@ func ListMutualFundPurchaseHelper() (string, error) {
 		table.Append([]string{strconv.Itoa(mfp.id), mfp.name, mfp.mftype, amount, nav, units, date})
 	}
 	table.Render()
-	return buf.String(), nil
+	log.Print(buf.String())
+	return nil
 }
 
 func RemoveMutualFundPurchase(mfp MutualFundPurchase) error {
@@ -491,19 +504,10 @@ func RemoveMutualFundPurchase(mfp MutualFundPurchase) error {
 	return nil
 }
 
-func GetMutualFundSummary(
-	navHelper NavHelper, nowHelper NowHelper) ([]MutualFundSummary, error) {
+func GetMutualFundSummary() ([]MutualFundSummary, error) {
 	mfps, err := ListMutualFundPurchases()
 	if err != nil {
 		return nil, err
-	}
-
-	if navHelper == nil {
-		navHelper = moneyControlNavHelper
-	}
-
-	if nowHelper == nil {
-		nowHelper = time.Now
 	}
 
 	mutualFundsMap := make(map[MutualFund]bool)
@@ -517,7 +521,7 @@ func GetMutualFundSummary(
 		mutualFunds = append(mutualFunds, mf)
 	}
 
-	latestNav, err := navHelper(mutualFunds)
+	latestNav, err := NavHelperFunc(mutualFunds)
 	if err != nil {
 		return nil, err
 	}
@@ -529,7 +533,7 @@ func GetMutualFundSummary(
 		mf := mfp.MutualFund
 		mfs := mfsMap[mf]
 		mfs.MutualFund = mfp.MutualFund
-		days := nowHelper().Sub(mfp.time).Hours() / 24
+		days := NowHelperFunc().Sub(mfp.time).Hours() / 24
 		sumAmountxDays[mf] += mfp.amount * days
 		sumAmount[mf] += mfp.amount
 		mfs.amount += mfp.amount
@@ -570,9 +574,8 @@ func GetMutualFundSummary(
 	return mfss, nil
 }
 
-func MutualFundSummaryHelper(
-	navHelper NavHelper, nowHelper NowHelper) (string, error) {
-	mfsums, err := GetMutualFundSummary(navHelper, nowHelper)
+func MutualFundSummaryHelper() error {
+	mfsums, err := GetMutualFundSummary()
 
 	var mfssorter mutualFundSummarySorter
 	mfssorter.mfsums = mfsums
@@ -580,7 +583,7 @@ func MutualFundSummaryHelper(
 	sort.Sort(&mfssorter)
 
 	if err != nil {
-		return "", err
+		return err
 	}
 	var buf bytes.Buffer
 	table := tablewriter.NewWriter(&buf)
@@ -606,13 +609,14 @@ func MutualFundSummaryHelper(
 			projectedYearlyRet})
 	}
 	table.Render()
-	return buf.String(), nil
+	log.Print(buf.String())
+	return nil
 }
 
-func MutualFundDisHelper() (string, error) {
+func MutualFundDisHelper() error {
 	mfps, err := ListMutualFundPurchases()
 	if err != nil {
-		return "", err
+		return err
 	}
 	typeToAmount := make(map[string]float64)
 	typeToPercentage := make(map[string]float64)
@@ -641,5 +645,6 @@ func MutualFundDisHelper() (string, error) {
 		table.Append([]string{mftype, amount, percentage})
 	}
 	table.Render()
-	return buf.String(), nil
+	log.Print(buf.String())
+	return nil
 }
