@@ -590,15 +590,15 @@ func MutualFundSummaryHelper() error {
 	table.SetHeader([]string{"MfId", "Name", "Type", "AvgDays",
 		"Amount", "Units", "CurrentVal", "Appr", "PrjRet"})
 	for _, mfsum := range mfsums {
-		amount := fmt.Sprintf("%.3f", mfsum.amount)
+		amount := fmt.Sprintf("%d", int(mfsum.amount))
 		var units string
 		if mfsum.units != 0 {
-			units = fmt.Sprintf("%.3f", mfsum.units)
+			units = fmt.Sprintf("%.2f", mfsum.units)
 		} else {
 		}
-		currentValue := fmt.Sprintf("%.3f", mfsum.currentValue)
-		appreciation := fmt.Sprintf("%.3f", mfsum.appreciation)
-		projectedYearlyRet := fmt.Sprintf("%.3f", mfsum.projectedYearlyRet)
+		currentValue := fmt.Sprintf("%d", int(mfsum.currentValue))
+		appreciation := fmt.Sprintf("%.2f", mfsum.appreciation)
+		projectedYearlyRet := fmt.Sprintf("%.2f", mfsum.projectedYearlyRet)
 		var mfIdStr string
 		if mfsum.mfid != 0 {
 			mfIdStr = strconv.Itoa(mfsum.mfid)
