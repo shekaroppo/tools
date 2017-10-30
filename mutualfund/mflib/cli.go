@@ -157,6 +157,60 @@ func SmfsCliHelper(c *cli.Context) error {
 
 func GetCliApp() *cli.App {
 	app := cli.NewApp()
+	app.Name = "mutualfund"
+	app.Usage = "A tool to track mutual fund investments."
+	app.Version = "1.0.0"
+	app.UsageText =
+		`
+This is a tool to track mutual fund investments. The
+information about the mutual funds and the investments made are
+stored in an SQLite DB (a regular file).  The path to the
+SQLite DB is to be mentioned by an environment variable 'MFDB'.
+
+To begin, set MFDB to a path in your filesystem:
+export MFDB='/home/user/mfdata.db'
+
+Preferably, add this to your .bashrc.
+
+Begin by initializing the database by:
+mutualfund init
+
+Insert/List/Remove mutual fund information by:
+mutualfund (imf|lmf|rmf) <>
+
+Insert/List/Remove mutual fund purchase information by:
+mutualfund (imfp|lmfp|rmfp) <>
+
+Summary of investments:
+$ mutualfund (smfs|dis)
+`
+
+	insertMutualFundPurchaseUsage :=
+		`
+Insert a new mutual fund to database.
+
+The arguments are
+mutualfund imfp <mfid> <amount> <nav> <date>
+
+mfid - Id of the mutual fund (use mutualfund lmf command to get this)
+amount - Amount of investment made
+nav - NAV at the time of investment
+date - Date in the format YYYY-MM-DD
+	`
+
+	insertMutualFundUsage :=
+		`
+Insert a new mutual fund purchase to database.
+
+The arguments are
+mutualfund imf <name> <url> <folio> <type>
+
+name - Name of the mutual fund to use while displaying it
+url - Url to the moneycontrol page of mutual fund for grabbing NAV
+amfi folio - Unused now (see later for usage)
+type - Type of mutual fund (to filter while displaying)
+	`
+
 	app.Commands = append(
 		app.Commands,
 		cli.Command{
@@ -165,10 +219,11 @@ func GetCliApp() *cli.App {
 			Action: InitDbCliHelper,
 		},
 		cli.Command{
-			Name:    "insertMutualFund",
-			Aliases: []string{"imf"},
-			Usage:   "Insert a new mutual fund",
-			Action:  InsertMfCliHelper,
+			Name:      "insertMutualFund",
+			Aliases:   []string{"imf"},
+			Usage:     "Insert a new mutual fund",
+			Action:    InsertMfCliHelper,
+			UsageText: insertMutualFundUsage,
 		},
 		cli.Command{
 			Name:    "listMutualFund",
@@ -183,10 +238,11 @@ func GetCliApp() *cli.App {
 			Action:  RemoveMfCliHelper,
 		},
 		cli.Command{
-			Name:    "insertMutualFundPurchase",
-			Aliases: []string{"imfp"},
-			Usage:   "Insert a new mutual fund purchase",
-			Action:  InsertMfpCliHelper,
+			Name:      "insertMutualFundPurchase",
+			Aliases:   []string{"imfp"},
+			Usage:     "Insert a new mutual fund purchase",
+			Action:    InsertMfpCliHelper,
+			UsageText: insertMutualFundPurchaseUsage,
 		},
 		cli.Command{
 			Name:    "listMutualFundPurchase",
