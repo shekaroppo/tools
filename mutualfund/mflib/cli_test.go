@@ -232,6 +232,17 @@ func TestMutualFundSummary(t *testing.T) {
 +------+-------+-------+---------+--------+--------+------------+--------+------------+
 `
 	assertCommandOutput(t, args, expOutput)
+
+	args = []string{"mutualfund", "smfs", "--type", "type1"}
+	expOutput =
+		`+------+-------+-------+---------+--------+--------+------------+--------+------------+
+| MFID | NAME  | TYPE  | AVGDAYS | AMOUNT | UNITS  | CURRENTVAL |  APPR  |   PRJRET   |
++------+-------+-------+---------+--------+--------+------------+--------+------------+
+|    1 | mf1   | type1 |      43 |  20000 | 150.00 |      75000 | 275.00 | 7457361.05 |
+|      | Total |       |      43 |  20000 |        |      75000 | 275.00 | 7457361.05 |
++------+-------+-------+---------+--------+--------+------------+--------+------------+
+`
+	assertCommandOutput(t, args, expOutput)
 }
 
 func TestDist(t *testing.T) {

@@ -346,7 +346,7 @@ func RemoveMutualFund(mf MutualFund) error {
 	return nil
 }
 
-func ListMutualFundPurchases() ([]MutualFundPurchase, error) {
+func ListMutualFundPurchases(mftype string) ([]MutualFundPurchase, error) {
 	db, err := GetDb()
 	if err != nil {
 		return nil, err
@@ -365,8 +365,13 @@ func ListMutualFundPurchases() ([]MutualFundPurchase, error) {
 		    mutual_fund_purchase.nav,
 		    date(mutual_fund_purchase.time)
 	from mutual_fund join mutual_fund_purchase
-	where mutual_fund_purchase.mfid=mutual_fund.mfid
-	order by mutual_fund_purchase.id`
+	where mutual_fund_purchase.mfid=mutual_fund.mfid `
+
+	if mftype != "" {
+		sqlStmt += " and mutual_fund.type='" + mftype + "' "
+	}
+
+	sqlStmt += "order by mutual_fund_purchase.id"
 	rows, err := db.Query(sqlStmt)
 	if err != nil {
 		return nil, err
@@ -455,7 +460,7 @@ func RemoveMutualFundPurchaseHelper(mfpid int) error {
 }
 
 func ListMutualFundPurchaseHelper() error {
-	mfps, err := ListMutualFundPurchases()
+	mfps, err := ListMutualFundPurchases("")
 	if err != nil {
 		return err
 	}
@@ -504,8 +509,8 @@ func RemoveMutualFundPurchase(mfp MutualFundPurchase) error {
 	return nil
 }
 
-func GetMutualFundSummary() ([]MutualFundSummary, error) {
-	mfps, err := ListMutualFundPurchases()
+func GetMutualFundSummary(mftype string) ([]MutualFundSummary, error) {
+	mfps, err := ListMutualFundPurchases(mftype)
 	if err != nil {
 		return nil, err
 	}
@@ -574,8 +579,8 @@ func GetMutualFundSummary() ([]MutualFundSummary, error) {
 	return mfss, nil
 }
 
-func MutualFundSummaryHelper() error {
-	mfsums, err := GetMutualFundSummary()
+func MutualFundSummaryHelper(mftype string) error {
+	mfsums, err := GetMutualFundSummary(mftype)
 
 	var mfssorter mutualFundSummarySorter
 	mfssorter.mfsums = mfsums
@@ -614,7 +619,7 @@ func MutualFundSummaryHelper() error {
 }
 
 func MutualFundDisHelper() error {
-	mfps, err := ListMutualFundPurchases()
+	mfps, err := ListMutualFundPurchases("")
 	if err != nil {
 		return err
 	}

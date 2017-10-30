@@ -147,7 +147,7 @@ func DisCliHelper(c *cli.Context) error {
 }
 
 func SmfsCliHelper(c *cli.Context) error {
-	err := MutualFundSummaryHelper()
+	err := MutualFundSummaryHelper(c.String("type"))
 	if err != nil {
 		log.Println(err)
 		return err
@@ -205,6 +205,13 @@ func GetCliApp() *cli.App {
 			Aliases: []string{"smfs"},
 			Usage:   "Summary of all mutual fund investments",
 			Action:  SmfsCliHelper,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "type",
+					Value: "",
+					Usage: "Show summary for only this type",
+				},
+			},
 		},
 		cli.Command{
 			Name:    "distribution",
