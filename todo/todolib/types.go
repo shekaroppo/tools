@@ -1,7 +1,10 @@
 package todolib
 
 import (
+	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -145,6 +148,17 @@ func ListTaskGroupByName(groupName string) (TaskGroup, error) {
 	return taskGroup, err
 }
 
+func ListTaskGroupByShortName(shortName string) (TaskGroup, error) {
+	taskGroup := TaskGroup{}
+	db, err := GetDb()
+	if err != nil {
+		return taskGroup, err
+	}
+	defer db.Close()
+	err = db.Get(&taskGroup, "SELECT * FROM task_group WHERE short_name=$1", shortName)
+	return taskGroup, err
+}
+
 func RemoveTaskGroup(groupId int) error {
 	db, err := GetDb()
 	if err != nil {
@@ -158,20 +172,21 @@ func RemoveTaskGroup(groupId int) error {
 	return nil
 }
 
-func InsertTask(task Task) error {
+func InsertTask(task Task) (int, error) {
 	db, err := GetDb()
 	if err != nil {
-		return err
+		return -1, err
 	}
 	defer db.Close()
 
-	taskGroup, err := ListTaskGroupByName(task.GroupName)
+	taskGroup, err := ListTaskGroupByShortName(task.ShortName)
 	if err != nil {
-		return err
+		msg := "No task group with short name '" + task.ShortName + "'"
+		return -1, errors.New(msg)
 	}
 
 	tx := db.MustBegin()
-	tx.MustExec(
+	result := tx.MustExec(
 		`insert into task (task_str, added, due, est_mins,
 								 act_mins, priority, group_id, done)
 		 values
@@ -179,10 +194,14 @@ func InsertTask(task Task) error {
 		task.TaskStr, task.Added, task.Due, task.EstMins,
 		task.ActMins, task.Priority, taskGroup.GroupId, task.Done)
 	tx.Commit()
-	return nil
+	insertId, err := result.LastInsertId()
+	if err != nil {
+		return -1, nil
+	}
+	return int(insertId), nil
 }
 
-func ListTasks() ([]Task, error) {
+func ListTasksHelper(done int, taskId int) ([]Task, error) {
 	db, err := GetDb()
 	if err != nil {
 		return nil, err
@@ -190,12 +209,36 @@ func ListTasks() ([]Task, error) {
 	defer db.Close()
 
 	tasks := []Task{}
-	err = db.Select(&tasks,
-		`SELECT task.*, task_group.short_name "task_group.short_name",
-				  task_group.group_name "task_group.group_name",
-				  task_group.group_id "task_group.group_id"
-		 FROM task JOIN task_group ON task.group_id = task_group.group_id`)
+	query := `SELECT task.*, task_group.short_name "task_group.short_name",
+						  task_group.group_name "task_group.group_name",
+       				  task_group.group_id "task_group.group_id"
+			    FROM task JOIN task_group ON task.group_id = task_group.group_id `
+
+	var conditions []string
+	if done == 0 || done == 1 {
+		conditions = append(
+			conditions, " task.done="+strconv.Itoa(done))
+	}
+	if taskId != -1 {
+		conditions = append(
+			conditions, " task.task_id="+strconv.Itoa(taskId))
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query += " ORDER by task.priority ASC, task.task_id ASC"
+	err = db.Select(&tasks, query)
 	return tasks, err
+}
+
+func ListTasks(done int) ([]Task, error) {
+	return ListTasksHelper(done, -1)
+}
+
+func ListTask(taskId int) ([]Task, error) {
+	return ListTasksHelper(-1, taskId)
 }
 
 func RemoveTask(taskId int) error {
@@ -206,7 +249,7 @@ func RemoveTask(taskId int) error {
 	defer db.Close()
 
 	tx := db.MustBegin()
-	tx.MustExec("delete from task_group where group_id=$1", taskId)
+	tx.MustExec("delete from task where task_id=$1", taskId)
 	tx.Commit()
 	return nil
 }

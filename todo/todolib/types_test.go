@@ -51,6 +51,8 @@ func TestInsertRemoveGetTaskGroup(t *testing.T) {
 	assert.Equal(t, expGroups, retGroups)
 	retGroup, err := ListTaskGroupByName("office project")
 	assert.Equal(t, retGroup, expGroups[0])
+	retGroup, err = ListTaskGroupByShortName("op")
+	assert.Equal(t, retGroup, expGroups[0])
 	retGroup, err = ListTaskGroupByName("foo")
 	assert.NotNil(t, err)
 	err = RemoveTaskGroup(3)
@@ -70,7 +72,8 @@ func createTasks(t *testing.T, taskGroups []TaskGroup) []Task {
 		Task{5, taskGroups[2], 3, "review task 1", false, "2017-10-28", "2017-10-28", 10, 10, 0},
 	}
 	for _, task := range tasks {
-		InsertTask(task)
+		retVal, _ := InsertTask(task)
+		assert.Equal(t, retVal, task.TaskId)
 	}
 	return tasks
 }
