@@ -547,6 +547,22 @@ def t_lpdd(parsed_args):
                 selected_tasks.append(x)
     print_todo_tasks(parsed_args, selected_tasks)
 
+def t_rpdd(parsed_args):
+    """Returns the tasks which are due today."""
+    todo_contents = todo()
+    new_todo_contents = []
+    today_date = datetime.datetime.today().date()
+    for x in todo_contents:
+        due_match = re.search(r"due:(\d+-\d+-\d+)", x[1])
+        task_obj_to_append = x
+        if due_match:
+            due_date = datetime.datetime.strptime(
+                due_match.group(1), "%Y-%m-%d").date()
+            if (due_date - today_date).days < 0:
+                task_obj_to_append = remove_due_today(x)
+        new_todo_contents.append(task_obj_to_append)
+    flush_todo(new_todo_contents)
+
 def t_lndd(parsed_args):
     """Returns the tasks which are due today."""
     todo_contents = todo()
@@ -716,7 +732,6 @@ def t_daystart(parsed_args):
     day_tasks_file = os.getenv("DAY_TASKS_FILE")
     if day_tasks_file:
         with open(day_tasks_file, "r") as f:
-            import pdb; pdb.set_trace()
             weekday_to_tasks = eval(f.read())
     for plugin in PLUGINS:
         if not hasattr(plugin, 'get_day_tasks'):
@@ -799,9 +814,12 @@ def config_list_commands(subparsers):
 
     # List what is due today.
     lpdd = get_sub_parser(subparsers, 'lpdd')
-    ldt.add_argument('project_short_name', nargs='?',
+    lpdd.add_argument('project_short_name', nargs='?',
                      choices=PROJECT_MAP.keys(), default="")
     command_map['lpdd'] = {'method': t_lpdd}
+
+    get_sub_parser(subparsers, 'rpdd')
+    command_map['rpdd'] = {'method': t_rpdd}
 
     # List tasks without any due date.
     lndd = get_sub_parser(subparsers, 'lndd')

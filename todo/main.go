@@ -1,18 +1,12 @@
-package todo
+package main
 
 import (
 	"os"
 
-	"github.com/urfave/cli"
+	"github.com/rameshg87/tools/todo/todolib"
 )
 
-func GetApp() *cli.App {
-	app := cli.NewApp()
-	InitConfigCommands(app)
-	return app
-}
-
 func main() {
-	app := GetApp()
+	app := todolib.GetApp()
 	app.Run(os.Args)
 }

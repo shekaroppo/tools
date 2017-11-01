@@ -42,12 +42,6 @@ type WeekAllocation struct {
 	allocation  []Allocation
 }
 
-type TodoDbNotSet bool
-
-func (m TodoDbNotSet) Error() string {
-	return "'TODODB' environment variable is not set"
-}
-
 var dbSchema = [6]string{
 	`create table task_group (
 		group_id integer PRIMARY KEY AUTOINCREMENT,
@@ -156,6 +150,9 @@ func ListTaskGroupByShortName(shortName string) (TaskGroup, error) {
 	}
 	defer db.Close()
 	err = db.Get(&taskGroup, "SELECT * FROM task_group WHERE short_name=$1", shortName)
+	if err != nil {
+		return taskGroup, InvalidArgument{shortName, "task group"}
+	}
 	return taskGroup, err
 }
 
@@ -237,8 +234,15 @@ func ListTasks(done int) ([]Task, error) {
 	return ListTasksHelper(done, -1)
 }
 
-func ListTask(taskId int) ([]Task, error) {
-	return ListTasksHelper(-1, taskId)
+func ListTask(taskId int) (Task, error) {
+	tasks, err := ListTasksHelper(-1, taskId)
+	if err != nil {
+		return Task{}, err
+	}
+	if len(tasks) == 0 {
+		return Task{}, TaskNotFound(taskId)
+	}
+	return tasks[0], nil
 }
 
 func RemoveTask(taskId int) error {

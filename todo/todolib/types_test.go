@@ -84,7 +84,7 @@ func TestInsertRemoveUpdateTask(t *testing.T) {
 	InitDb()
 	expGroups := createTaskGroups(t)
 	expTasks := createTasks(t, expGroups)
-	retTasks, err := ListTasks()
+	retTasks, err := ListTasks(-1)
 	assert.Nil(t, err)
 	assert.Equal(t, expTasks, retTasks)
 	expTasks[0].TaskStr = "office project new task 1"
@@ -96,7 +96,7 @@ func TestInsertRemoveUpdateTask(t *testing.T) {
 	for _, task := range expTasks {
 		UpdateTask(task)
 	}
-	retTasks, err = ListTasks()
+	retTasks, err = ListTasks(-1)
 	assert.Nil(t, err)
 	assert.Equal(t, expTasks, retTasks)
 }
