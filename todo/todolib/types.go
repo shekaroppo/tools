@@ -75,7 +75,7 @@ var dbSchema = [6]string{
 		foreign key(week_id) references week(week_id))`,
 }
 
-func GetDb() (*sqlx.DB, error) {
+func GetDb(init bool) (*sqlx.DB, error) {
 	mfDb := os.Getenv("TODODB")
 	if mfDb == "" {
 		return nil, TodoDbNotSet(true)
@@ -86,11 +86,18 @@ func GetDb() (*sqlx.DB, error) {
 		return nil, err
 	}
 
+	if !init {
+		_, err = db.Queryx("SELECT COUNT(*) FROM task_group")
+		if err != nil {
+			return nil, errors.New("Cannot find DB schema. Initialize DB with 'init' command")
+		}
+	}
+
 	return db, err
 }
 
 func InitDb() error {
-	db, err := GetDb()
+	db, err := GetDb(true)
 	if err != nil {
 		return err
 	}
@@ -103,7 +110,7 @@ func InitDb() error {
 }
 
 func InsertTaskGroup(groupName, shortName string) error {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return err
 	}
@@ -118,7 +125,7 @@ func InsertTaskGroup(groupName, shortName string) error {
 }
 
 func ListTaskGroups() ([]TaskGroup, error) {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +141,7 @@ func ListTaskGroups() ([]TaskGroup, error) {
 
 func ListTaskGroupByName(groupName string) (TaskGroup, error) {
 	taskGroup := TaskGroup{}
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return taskGroup, err
 	}
@@ -145,7 +152,7 @@ func ListTaskGroupByName(groupName string) (TaskGroup, error) {
 
 func ListTaskGroupByShortName(shortName string) (TaskGroup, error) {
 	taskGroup := TaskGroup{}
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return taskGroup, err
 	}
@@ -158,7 +165,7 @@ func ListTaskGroupByShortName(shortName string) (TaskGroup, error) {
 }
 
 func RemoveTaskGroup(groupId int) error {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return err
 	}
@@ -171,7 +178,7 @@ func RemoveTaskGroup(groupId int) error {
 }
 
 func InsertTask(task Task) (int, error) {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return -1, err
 	}
@@ -201,7 +208,7 @@ func InsertTask(task Task) (int, error) {
 
 func ListTasksHelper(done int, doneDate string,
 	dueDate string, taskId int) ([]Task, error) {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +267,7 @@ func ListTask(taskId int) (Task, error) {
 }
 
 func RemoveTask(taskId int) error {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return err
 	}
@@ -273,7 +280,7 @@ func RemoveTask(taskId int) error {
 }
 
 func UpdateTask(task Task) error {
-	db, err := GetDb()
+	db, err := GetDb(false)
 	if err != nil {
 		return err
 	}

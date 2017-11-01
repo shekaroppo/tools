@@ -142,6 +142,10 @@ func TestInsertRemoveListTasks(t *testing.T) {
 	tempFile := createTestDb(t)
 	defer os.Remove(tempFile)
 
+	args = []string{"todo", "ls"}
+	expOutput = "Cannot find DB schema. Initialize DB with 'init' command\n"
+	assertCommandOutput(t, app, args, expOutput)
+
 	args = []string{"todo", "init"}
 	expOutput = "Initialized DB at " + tempFile + "\n"
 	assertCommandOutput(t, app, args, expOutput)
