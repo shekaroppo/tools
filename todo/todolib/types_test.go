@@ -65,11 +65,11 @@ func TestInsertRemoveGetTaskGroup(t *testing.T) {
 
 func createTasks(t *testing.T, taskGroups []TaskGroup) []Task {
 	tasks := []Task{
-		Task{1, taskGroups[0], 1, "office project task 1", false, "2017-10-28", "2017-10-28", 10, 10, 0},
-		Task{2, taskGroups[0], 1, "office project task 2", true, "2017-10-29", "2017-11-28", 10, 10, 0},
-		Task{3, taskGroups[1], 2, "personal task 1", false, "2017-10-30", "2017-11-29", 10, 10, 0},
-		Task{4, taskGroups[1], 2, "personal task 2", true, "2017-10-28", "2017-10-28", 10, 10, 0},
-		Task{5, taskGroups[2], 3, "review task 1", false, "2017-10-28", "2017-10-28", 10, 10, 0},
+		Task{1, taskGroups[0], 1, "office project task 1", "", "2017-10-28", "2017-10-28", 10, 10, 0},
+		Task{2, taskGroups[0], 1, "office project task 2", "2017-10-29", "2017-10-29", "2017-11-28", 10, 10, 0},
+		Task{3, taskGroups[1], 2, "personal task 1", "", "2017-10-30", "2017-11-29", 10, 10, 0},
+		Task{4, taskGroups[1], 2, "personal task 2", "2017-10-28", "2017-10-28", "2017-10-28", 10, 10, 0},
+		Task{5, taskGroups[2], 3, "review task 1", "", "2017-10-28", "2017-10-28", 10, 10, 0},
 	}
 	for _, task := range tasks {
 		retVal, _ := InsertTask(task)
@@ -84,19 +84,19 @@ func TestInsertRemoveUpdateTask(t *testing.T) {
 	InitDb()
 	expGroups := createTaskGroups(t)
 	expTasks := createTasks(t, expGroups)
-	retTasks, err := ListTasks(-1)
+	retTasks, err := ListTasks(-1, "", "")
 	assert.Nil(t, err)
 	assert.Equal(t, expTasks, retTasks)
 	expTasks[0].TaskStr = "office project new task 1"
-	expTasks[1].Done = false
+	expTasks[1].DoneDate = ""
 	expTasks[2].TaskGroup = expGroups[2]
 	expTasks[2].GroupId = 3
-	expTasks[3].Due = "2017-12-31"
+	expTasks[3].DueDate = "2017-12-31"
 	expTasks[4].Added = "2017-12-30"
 	for _, task := range expTasks {
 		UpdateTask(task)
 	}
-	retTasks, err = ListTasks(-1)
+	retTasks, err = ListTasks(-1, "", "")
 	assert.Nil(t, err)
 	assert.Equal(t, expTasks, retTasks)
 }

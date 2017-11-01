@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/urfave/cli"
@@ -427,6 +428,130 @@ func TestChangeFields(t *testing.T) {
 |      3 | X | personal learning task 1 | personal learning |    1 | 120 |   0 |     |
 |      5 |   | personal learning task 1 | personal learning |    1 | 120 |   0 |     |
 +--------+---+--------------------------+-------------------+------+-----+-----+-----+
+`
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "donow"}
+	expOutput = CommandArgumentError(1).Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "donow", "foo"}
+	expOutput = InvalidArgument{"foo", "task id"}.Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "donow", "10"}
+	expOutput = TaskNotFound(10).Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "donow", "1"}
+	expOutput = "Changed actual for task 1 to 100 minutes\n"
+	currentTime, _ := time.Parse(time.RFC3339, "2012-11-01T22:08:41+00:00")
+	testDoNowWait := func() {
+		currentTime, _ = time.Parse(time.RFC3339, "2012-11-01T22:18:41+00:00")
+	}
+	testNowHelper := func() time.Time {
+		return currentTime
+	}
+	nowHelper = testNowHelper
+	doNowWait = testDoNowWait
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "lsa"}
+	expOutput =
+		`+--------+---+--------------------------+-------------------+------+-----+-----+-----+
+| TASKID | X |           TASK           |       GROUP       | PRIO | EST | ACT | DUE |
++--------+---+--------------------------+-------------------+------+-----+-----+-----+
+|      4 |   | personal learning task 2 | personal learning |    0 |  40 |   0 |     |
+|      1 |   | office project task 1    | office review     |    1 |  80 | 100 |     |
+|      2 | X | office project task 2    | office project    |    1 |  30 |   0 |     |
+|      3 | X | personal learning task 1 | personal learning |    1 | 120 |   0 |     |
+|      5 |   | personal learning task 1 | personal learning |    1 | 120 |   0 |     |
++--------+---+--------------------------+-------------------+------+-----+-----+-----+
+`
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "sdd", "or"}
+	expOutput = CommandArgumentError(2).Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "sdd", "foo", "1"}
+	expOutput = InvalidArgument{"foo", "due date"}.Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "sdd", "or", "foo"}
+	expOutput = InvalidArgument{"foo", "task id"}.Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "sdd", "or", "10"}
+	expOutput = TaskNotFound(10).Error() + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	currentTime, _ = time.Parse(time.RFC3339, "2012-11-01T22:08:41+00:00")
+	testNowHelper = func() time.Time {
+		return currentTime
+	}
+	nowHelper = testNowHelper
+	args = []string{"todo", "sdd", "1", "1"}
+	expOutput = "Set due date for task 1 to 2012-11-02\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "ls"}
+	expOutput =
+		`+--------+--------------------------+-------------------+------+-----+-----+------------+
+| TASKID |           TASK           |       GROUP       | PRIO | EST | ACT |    DUE     |
++--------+--------------------------+-------------------+------+-----+-----+------------+
+|      4 | personal learning task 2 | personal learning |    0 |  40 |   0 |            |
+|      1 | office project task 1    | office review     |    1 |  80 | 100 | 2012-11-02 |
+|      5 | personal learning task 1 | personal learning |    1 | 120 |   0 |            |
++--------+--------------------------+-------------------+------+-----+-----+------------+
+`
+	assertCommandOutput(t, app, args, expOutput)
+}
+
+func TestSummary(t *testing.T) {
+	app := GetApp()
+	os.Unsetenv("TODODB")
+	expOutput := TodoDbNotSet(true).Error() + "\n"
+	args := []string{"todo", "st"}
+
+	tempFile := createTestDb(t)
+	defer os.Remove(tempFile)
+
+	args = []string{"todo", "init"}
+	expOutput = "Initialized DB at " + tempFile + "\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	createTaskGroupsCli(t, app)
+	createTasksCli(t, app)
+
+	args = []string{"todo", "do", "1"}
+	expOutput = "Marked task 1 as done\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	currentTime, _ := time.Parse(time.RFC3339, "2012-11-01T22:08:41+00:00")
+	testNowHelper := func() time.Time {
+		return currentTime
+	}
+	nowHelper = testNowHelper
+	args = []string{"todo", "sdd", "0", "2"}
+	expOutput = "Set due date for task 2 to 2012-11-01\n"
+	assertCommandOutput(t, app, args, expOutput)
+
+	args = []string{"todo", "st"}
+	expOutput =
+		`Completed tasks:
++--------+---+-----------------------+----------------+------+-----+-----+-----+
+| TASKID | X |         TASK          |     GROUP      | PRIO | EST | ACT | DUE |
++--------+---+-----------------------+----------------+------+-----+-----+-----+
+|      1 | X | office project task 1 | office project |    0 |  60 |   0 |     |
++--------+---+-----------------------+----------------+------+-----+-----+-----+
+
+Tasks due today:
++--------+-----------------------+----------------+------+-----+-----+------------+
+| TASKID |         TASK          |     GROUP      | PRIO | EST | ACT |    DUE     |
++--------+-----------------------+----------------+------+-----+-----+------------+
+|      2 | office project task 2 | office project |    1 |  30 |   0 | 2012-11-01 |
++--------+-----------------------+----------------+------+-----+-----+------------+
 `
 	assertCommandOutput(t, app, args, expOutput)
 }

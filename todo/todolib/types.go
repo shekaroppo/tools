@@ -2,6 +2,7 @@ package todolib
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -22,11 +23,11 @@ type Task struct {
 	TaskGroup `db:"task_group"`
 	GroupId   int    `db:"group_id"`
 	TaskStr   string `db:"task_str"`
-	Done      bool
+	DoneDate  string `db:"done_date"`
 	Added     string
-	Due       string
-	EstMins   int `db:"est_mins"`
-	ActMins   int `db:"act_mins"`
+	DueDate   string `db:"due_date"`
+	EstMins   int    `db:"est_mins"`
+	ActMins   int    `db:"act_mins"`
 	Priority  int
 }
 
@@ -51,11 +52,11 @@ var dbSchema = [6]string{
 		task_id integer PRIMARY KEY AUTOINCREMENT,
 		task_str integer,
 		added text,
-		due text,
+		due_date text,
 		est_mins int,
 		act_mins int,
 		priority int,
-		done int,
+		done_date text,
 		group_id int,
 		foreign key(group_id) references task_group(group_id))`,
 	`create table allocation (
@@ -184,12 +185,12 @@ func InsertTask(task Task) (int, error) {
 
 	tx := db.MustBegin()
 	result := tx.MustExec(
-		`insert into task (task_str, added, due, est_mins,
-								 act_mins, priority, group_id, done)
+		`insert into task (task_str, added, due_date, est_mins,
+								 act_mins, priority, group_id, done_date)
 		 values
 		 ( $1, $2, $3, $4, $5, $6, $7, $8 )`,
-		task.TaskStr, task.Added, task.Due, task.EstMins,
-		task.ActMins, task.Priority, taskGroup.GroupId, task.Done)
+		task.TaskStr, task.Added, task.DueDate, task.EstMins,
+		task.ActMins, task.Priority, taskGroup.GroupId, task.DoneDate)
 	tx.Commit()
 	insertId, err := result.LastInsertId()
 	if err != nil {
@@ -198,7 +199,8 @@ func InsertTask(task Task) (int, error) {
 	return int(insertId), nil
 }
 
-func ListTasksHelper(done int, taskId int) ([]Task, error) {
+func ListTasksHelper(done int, doneDate string,
+	dueDate string, taskId int) ([]Task, error) {
 	db, err := GetDb()
 	if err != nil {
 		return nil, err
@@ -212,10 +214,22 @@ func ListTasksHelper(done int, taskId int) ([]Task, error) {
 			    FROM task JOIN task_group ON task.group_id = task_group.group_id `
 
 	var conditions []string
-	if done == 0 || done == 1 {
+	if doneDate != "" {
 		conditions = append(
-			conditions, " task.done="+strconv.Itoa(done))
+			conditions,
+			fmt.Sprintf(" task.done_date='%s' ", doneDate))
+	} else if done == 0 {
+		conditions = append(conditions, " task.done_date='' ")
+	} else if done == 1 {
+		conditions = append(conditions, " task.done_date!='' ")
 	}
+
+	if dueDate != "" {
+		conditions = append(
+			conditions,
+			fmt.Sprintf(" task.due_date='%s' ", dueDate))
+	}
+
 	if taskId != -1 {
 		conditions = append(
 			conditions, " task.task_id="+strconv.Itoa(taskId))
@@ -230,12 +244,12 @@ func ListTasksHelper(done int, taskId int) ([]Task, error) {
 	return tasks, err
 }
 
-func ListTasks(done int) ([]Task, error) {
-	return ListTasksHelper(done, -1)
+func ListTasks(done int, doneDate string, dueDate string) ([]Task, error) {
+	return ListTasksHelper(done, doneDate, dueDate, -1)
 }
 
 func ListTask(taskId int) (Task, error) {
-	tasks, err := ListTasksHelper(-1, taskId)
+	tasks, err := ListTasksHelper(-1, "", "", taskId)
 	if err != nil {
 		return Task{}, err
 	}
@@ -273,11 +287,11 @@ func UpdateTask(task Task) error {
 	tx := db.MustBegin()
 	tx.MustExec(
 		`update task set
-			task_str=$1, added=$2, due=$3, est_mins=$4,
-			act_mins=$5, priority=$6, group_id=$7, done=$8
+			task_str=$1, added=$2, due_date=$3, est_mins=$4,
+			act_mins=$5, priority=$6, group_id=$7, done_date=$8
 		 where task_id=$9`,
-		task.TaskStr, task.Added, task.Due, task.EstMins,
-		task.ActMins, task.Priority, taskGroup.GroupId, task.Done,
+		task.TaskStr, task.Added, task.DueDate, task.EstMins,
+		task.ActMins, task.Priority, taskGroup.GroupId, task.DoneDate,
 		task.TaskId)
 	tx.Commit()
 	return nil

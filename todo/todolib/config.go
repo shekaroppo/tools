@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli"
@@ -142,35 +145,126 @@ func RemoveTaskCli(c *cli.Context) error {
 	return err
 }
 
-func doHelper(c *cli.Context) (Task, error) {
-	var task Task
-	if c.NArg() != 1 {
-		return task, per(CommandArgumentError(1))
+type TaskChangeFunc func(*Task, *cli.Context) (string, error)
+
+func ChangeField(
+	c *cli.Context, nargs int, changeFunc TaskChangeFunc) (Task, error) {
+	if c.NArg() != nargs+1 {
+		err := CommandArgumentError(nargs + 1)
+		log.Print(err.Error())
+		return Task{}, err
 	}
 
-	taskIdStr := c.Args().Get(0)
+	taskIdStr := c.Args().Get(nargs)
 	taskId, err := strconv.Atoi(taskIdStr)
 	if err != nil {
-		return task, per(InvalidArgument{taskIdStr, "task id"})
+		return Task{}, per(InvalidArgument{taskIdStr, "task id"})
 	}
 
-	task, err = ListTask(taskId)
+	task, err := ListTask(taskId)
 	if err != nil {
 		return Task{}, per(err)
 	}
-	if task.Done {
-		return task, pmr(fmt.Sprintf("Task %d is already marked as done", taskId))
+
+	msg, err := changeFunc(&task, c)
+	if err != nil {
+		return Task{}, per(err)
 	}
 
-	task.Done = true
 	err = UpdateTask(task)
 	if err == nil {
-		log.Printf("Marked task %d as done\n", taskId)
+		log.Printf(msg)
 	} else {
 		log.Println(err)
 	}
 
 	return task, err
+}
+
+func ChangePriority(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		priorityStr := c.Args().Get(0)
+		priority, err := strconv.Atoi(priorityStr)
+		if err != nil {
+			return "", InvalidArgument{priorityStr, "priority"}
+		}
+		task.Priority = priority
+		return fmt.Sprintf("Changed task %d to priority %d\n", task.TaskId, priority), nil
+	}
+	_, err := ChangeField(c, 1, changeFunc)
+	return err
+}
+
+func ChangeEst(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		estMinsStr := c.Args().Get(0)
+		estMins, err := strconv.Atoi(estMinsStr)
+		if err != nil {
+			return "", InvalidArgument{estMinsStr, "estimate in minutes"}
+		}
+		task.EstMins = estMins
+		return fmt.Sprintf("Changed estimate for task %d to %d minutes\n", task.TaskId, estMins), nil
+	}
+	_, err := ChangeField(c, 1, changeFunc)
+	return err
+}
+
+func ChangeAct(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		actMinsStr := c.Args().Get(0)
+		actMins, err := strconv.Atoi(actMinsStr)
+		if err != nil {
+			return "", InvalidArgument{actMinsStr, "actual in minutes"}
+		}
+		task.ActMins = actMins
+		return fmt.Sprintf("Changed actual for task %d to %d minutes\n", task.TaskId, actMins), nil
+	}
+	_, err := ChangeField(c, 1, changeFunc)
+	return err
+}
+
+func ChangeGroup(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		shortName := c.Args().Get(0)
+		taskGroup, err := ListTaskGroupByShortName(shortName)
+		if err != nil {
+			return "", err
+		}
+		task.TaskGroup = taskGroup
+		return fmt.Sprintf("Changed task %d to group %s\n", task.TaskId, task.GroupName), nil
+	}
+	_, err := ChangeField(c, 1, changeFunc)
+	return err
+}
+
+func SetDueDate(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		dueDateStr := c.Args().Get(0)
+		_, err := time.Parse("2006-01-02", dueDateStr)
+		if err != nil {
+			dueInDays, err := strconv.Atoi(dueDateStr)
+			if err != nil {
+				return "", InvalidArgument{dueDateStr, "due date"}
+			}
+			dueDateStr = nowHelper().Add(
+				time.Duration(time.Duration(dueInDays) * 24 * time.Hour)).Format("2006-01-02")
+		}
+		task.DueDate = dueDateStr
+		return fmt.Sprintf("Set due date for task %d to %s\n", task.TaskId, dueDateStr), nil
+	}
+	_, err := ChangeField(c, 1, changeFunc)
+	return err
+}
+
+func doHelper(c *cli.Context) (Task, error) {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		if task.DoneDate != "" {
+			return "", errors.New(fmt.Sprintf("Task %d is already marked as done", task.TaskId))
+		}
+		task.DoneDate = nowHelper().Format("2006-01-02")
+		return fmt.Sprintf("Marked task %d as done\n", task.TaskId), nil
+	}
+	return ChangeField(c, 0, changeFunc)
 }
 
 func Do(c *cli.Context) error {
@@ -183,7 +277,7 @@ func CloseAndReadd(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	task.Done = false
+	task.DoneDate = ""
 	id, err := InsertTask(task)
 	if err != nil {
 		return per(err)
@@ -192,101 +286,38 @@ func CloseAndReadd(c *cli.Context) error {
 	return nil
 }
 
-func ChangeGroup(c *cli.Context) error {
-	if c.NArg() != 2 {
-		err := CommandArgumentError(2)
-		log.Print(err.Error())
-		return err
-	}
+func WaitForCtrlC() {
+	var end_waiter sync.WaitGroup
+	end_waiter.Add(1)
+	var signal_channel chan os.Signal
+	signal_channel = make(chan os.Signal, 1)
+	signal.Notify(signal_channel, os.Interrupt)
+	go func() {
+		<-signal_channel
+		end_waiter.Done()
+	}()
+	end_waiter.Wait()
+}
 
-	shortName := c.Args().Get(0)
-	taskGroup, err := ListTaskGroupByShortName(shortName)
-	if err != nil {
-		return per(err)
-	}
+type DoNowWait func()
+type NowHelper func() time.Time
 
-	taskIdStr := c.Args().Get(1)
-	taskId, err := strconv.Atoi(taskIdStr)
-	if err != nil {
-		return per(InvalidArgument{taskIdStr, "task id"})
-	}
+var doNowWait DoNowWait = WaitForCtrlC
+var nowHelper NowHelper = time.Now
 
-	task, err := ListTask(taskId)
-	if err != nil {
-		return per(err)
+func DoNow(c *cli.Context) error {
+	changeFunc := func(task *Task, c *cli.Context) (string, error) {
+		if task.DoneDate != "" {
+			return "", errors.New(fmt.Sprintf("Task %d is already marked as done", task.TaskId))
+		}
+		start := nowHelper()
+		doNowWait()
+		stop := nowHelper()
+		task.ActMins += int(stop.Sub(start) / time.Minute)
+		return fmt.Sprintf("Changed actual for task %d to %d minutes\n", task.TaskId, task.ActMins), nil
 	}
-
-	task.TaskGroup = taskGroup
-	err = UpdateTask(task)
-	if err == nil {
-		log.Printf("Changed task %d to group %s\n", taskId, taskGroup.GroupName)
-	} else {
-		log.Println(err)
-	}
-
+	_, err := ChangeField(c, 0, changeFunc)
 	return err
-}
-
-type TaskChangeFunc func(*Task, int) string
-
-func ChangeIntField(
-	c *cli.Context, changeFunc TaskChangeFunc, fieldNameStr string) error {
-	if c.NArg() != 2 {
-		err := CommandArgumentError(2)
-		log.Print(err.Error())
-		return err
-	}
-
-	fieldStr := c.Args().Get(0)
-	field, err := strconv.Atoi(fieldStr)
-	if err != nil {
-		return per(InvalidArgument{fieldStr, fieldNameStr})
-	}
-
-	taskIdStr := c.Args().Get(1)
-	taskId, err := strconv.Atoi(taskIdStr)
-	if err != nil {
-		return per(InvalidArgument{taskIdStr, "task id"})
-	}
-
-	task, err := ListTask(taskId)
-	if err != nil {
-		return per(err)
-	}
-
-	msg := changeFunc(&task, field)
-	err = UpdateTask(task)
-	if err == nil {
-		log.Printf(msg)
-	} else {
-		log.Println(err)
-	}
-
-	return err
-}
-
-func ChangePriority(c *cli.Context) error {
-	changeFunc := func(task *Task, priority int) string {
-		task.Priority = priority
-		return fmt.Sprintf("Changed task %d to priority %d\n", task.TaskId, priority)
-	}
-	return ChangeIntField(c, changeFunc, "priority")
-}
-
-func ChangeEst(c *cli.Context) error {
-	changeFunc := func(task *Task, estMins int) string {
-		task.EstMins = estMins
-		return fmt.Sprintf("Changed estimate for task %d to %d minutes\n", task.TaskId, estMins)
-	}
-	return ChangeIntField(c, changeFunc, "estimate in minutes")
-}
-
-func ChangeAct(c *cli.Context) error {
-	changeFunc := func(task *Task, actMins int) string {
-		task.ActMins = actMins
-		return fmt.Sprintf("Changed actual for task %d to %d minutes\n", task.TaskId, actMins)
-	}
-	return ChangeIntField(c, changeFunc, "actual in minutes")
 }
 
 func InitDbCli(c *cli.Context) error {
@@ -364,6 +395,16 @@ func InitConfigCommands(app *cli.App) {
 			Name:   "act",
 			Usage:  "Change actual",
 			Action: ChangeAct,
+		},
+		cli.Command{
+			Name:   "donow",
+			Usage:  "Start doing a task",
+			Action: DoNow,
+		},
+		cli.Command{
+			Name:   "sdd",
+			Usage:  "Set due date for task",
+			Action: SetDueDate,
 		},
 	)
 }
