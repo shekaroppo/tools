@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
@@ -176,14 +175,10 @@ func TestEditor(t *testing.T) {
 	// Test editing of file. Since EDITOR is set to touch, it will
 	// change the access time of the file.
 	os.Setenv("EDITOR", "touch")
-	fi, _ := os.Stat(chosenFile)
-	statf := fi.Sys().(*syscall.Stat_t)
-	prevAtime := statf.Atimespec.Sec
+	prevAtime := Atime(chosenFile)
 	err = Edit("foo1", false)
 	assert.Nil(t, err)
-	fi, _ = os.Stat(chosenFile)
-	statf = fi.Sys().(*syscall.Stat_t)
-	newAtime := statf.Atimespec.Sec
+	newAtime := Atime(chosenFile)
 	assert.NotEqual(t, prevAtime, newAtime)
 
 	err = Edit("bar", false)

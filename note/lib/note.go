@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"syscall"
 )
 
 type NoteDirNotSetError bool
@@ -52,11 +51,9 @@ func (f FileList) Swap(i, j int) {
 }
 
 func (f FileList) Less(i, j int) bool {
-	fii, _ := os.Stat(f[i])
-	fij, _ := os.Stat(f[j])
-	stati := fii.Sys().(*syscall.Stat_t)
-	statj := fij.Sys().(*syscall.Stat_t)
-	return stati.Atimespec.Sec < statj.Atimespec.Sec
+	atimi := Atime(f[i])
+	atimj := Atime(f[j])
+	return atimi < atimj
 }
 
 func BaseNames(files []string) []string {
